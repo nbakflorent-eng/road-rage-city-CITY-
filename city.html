@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Road Rage City</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; }
+    canvas { display: block; }
+    #hud {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      color: #fff;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      text-shadow: 1px 1px 3px #000;
+      pointer-events: none;
+      user-select: none;
+    }
+    #hud .label { opacity: 0.7; }
+    #hud .value { font-weight: bold; font-size: 16px; }
+    #speed-wrap { margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <div class="label">ZQSD / WASD — conduire</div>
+    <div id="speed-wrap">
+      <span class="label">Vitesse : </span>
+      <span class="value" id="speed-display">0</span>
+      <span class="label"> km/h</span>
+    </div>
+  </div>
+
+  <!-- Three.js r128 CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <script>
+    // ════════════════════════════════════════
+    //  SCENE
+    // ════════════════════════════════════════
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87CEEB); // ciel bleu
+    scene.fog = new THREE.Fog(0x87CEEB, 90, 220);
+
+    const camera = new THREE.PerspectiveCamera(
+      60, window.innerWidth / window.innerHeight, 0.1, 500
+    );
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    document.body.appendChild(renderer.domElement);
+
+    // ════════════════════════════════════════
+    //  LUMIÈRES
+    // ════════════════════════════════════════
+    const sunLight = new THREE.DirectionalLight(0xfff8e7, 1.3);
+    sunLight.position.set(60, 100, 40);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.set(2048, 2048);
+    sunLight.shadow.camera.near   = 1;
+    sunLight.shadow.camera.far    = 350;
+    sunLight.shadow.camera.left   = -120;
+    sunLight.shadow.camera.right  =  120;
+    sunLight.shadow.camera.top    =  120;
+    sunLight.shadow.camera.bottom = -120;
+    scene.add(sunLight);
+
+    const ambientLight = new THREE.AmbientLight(0x8899bb, 0.65);
+    scene.add(ambientLight);
+
+    // ════════════════════════════════════════
+    //  CONSTANTES WORLD
+    // ════════════════════════════════════════
+    const WORLD    = 240;   // taille totale du sol
+    const RD_W     = 13;    // largeur route
+    const SW_W     = 2.8;   // largeur trottoir
+    const RD_POS   = [-28, 28]; // positions des axes (2H + 2V)
+
+    // ════════════════════════════════════════
+    //  MATÉRIAUX
+    // ════════════════════════════════════════
+    const matGrass    = new THREE.MeshLambertMaterial({ color: 0x4a7c3f });
+    const matAsphalt  = new THREE.MeshLambertMaterial({ color: 0x2e2e2e });
+    const matSidewalk = new THREE.MeshLambertMaterial({ color: 0xc0bfba });
+    const matYellow   = new THREE.MeshLambertMaterial({ color: 0xf5c518 });
+    const matWhite    = new THREE.MeshLambertMaterial({ color: 0xffffff });
+
+    // ────────────────────────────────────────
+    //  SOL (herbe / asphalte de base)
+    // ────────────────────────────────────────
+    const groundMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(WORLD, WORLD),
+      matGrass
+    );
+    groundMesh.rotation.x = -Math.PI / 2;
+    groundMesh.receiveShadow = true;
+    scene.add(groundMesh);
+
+    // ────────────────────────────────────────
+    //  Helpers de création de plans
+    // ────────────────────────────────────────
+    function makePlane(mat, x, z, w, d, y = 0.01) {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat);
+      m.rotation.x = -Math.PI / 2;
+      m.position.set(x, y, z);
+      m.receiveShadow = true;
+      scene.add(m);
+      return m;
+    }
+
+    // ────────────────────────────────────────
+    //  ROUTES
+    //  2 horizontales (axe X, constante en Z)
+    //  2 verticales   (axe Z, constante en X)
+    // ────────────────────────────────────────
+    RD_POS.forEach(rz => makePlane(matAsphalt, 0,  rz, WORLD,  RD_W, 0.02)); // horiz
+    RD_POS.forEach(rx => makePlane(matAsphalt, rx, 0,  RD_W, WORLD,  0.02)); // vert
+
+    // ────────────────────────────────────────
+    //  INTERSECTIONS (carrés asphalte)
+    // ────────────────────────────────────────
+    RD_POS.forEach(rx =>
+      RD_POS.forEach(rz =>
+        makePlane(matAsphalt, rx, rz, RD_W, RD_W, 0.025)
+      )
+    );
+
+    // ────────────────────────────────────────
+    //  TROTTOIRS blancs
+    // ────────────────────────────────────────
+    RD_POS.forEach(rz => {
+      [-1, 1].forEach(s =>
+        makePlane(matSidewalk, 0, rz + s * (RD_W / 2 + SW_W / 2), WORLD, SW_W, 0.03)
+      );
+    });
+    RD_POS.forEach(rx => {
+      [-1, 1].forEach(s =>
+        makePlane(matSidewalk, rx + s * (RD_W / 2 + SW_W / 2), 0, SW_W, WORLD, 0.03)
+      );
+    });
+
+    // ────────────────────────────────────────
+    //  LIGNES JAUNES DISCONTINUES (axe centre)
+    // ────────────────────────────────────────
+    const DASH_L = 3.0;
+    const DASH_G = 2.8;
+    const DASH_W = 0.18;
+    const STEP   = DASH_L + DASH_G;
+
+    function makeDashes(axis, fixedCoord) {
+      const count = Math.floor(WORLD / STEP);
+      const start = -WORLD / 2 + DASH_L / 2;
+      for (let i = 0; i < count; i++) {
+        const t = start + i * STEP;
+        const bx = axis === 'x' ? DASH_L : DASH_W;
+        const bz = axis === 'x' ? DASH_W  : DASH_L;
+        const mesh = new THREE.Mesh(
+          new THREE.BoxGeometry(bx, 0.005, bz),
+          matYellow
+        );
+        mesh.position.set(
+          axis === 'x' ? t          : fixedCoord,
+          0.04,
+          axis === 'x' ? fixedCoord : t
+        );
+        scene.add(mesh);
+      }
+    }
+
+    RD_POS.forEach(rz => makeDashes('x', rz));
+    RD_POS.forEach(rx => makeDashes('z', rx));
+
+    // ════════════════════════════════════════
+    //  VOITURE JOUEUR
+    //  Type : berline rouge, mesh box simple
+    //  Structure : caisse + cabine + 4 roues
+    // ════════════════════════════════════════
+    const CAR_L = 4.2;
+    const CAR_W = 2.0;
+    const CAR_H = 0.75;
+
+    const playerCar = new THREE.Group();
+
+    // — caisse
+    const matBody = new THREE.MeshLambertMaterial({ color: 0xcc1111 });
+    const bodyMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(CAR_W, CAR_H, CAR_L),
+      matBody
+    );
+    bodyMesh.position.y = CAR_H / 2;
+    bodyMesh.castShadow = true;
+    playerCar.add(bodyMesh);
+
+    // — cabine
+    const matCabin = new THREE.MeshLambertMaterial({ color: 0xe82020 });
+    const cabinMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(CAR_W * 0.88, CAR_H * 0.85, CAR_L * 0.52),
+      matCabin
+    );
+    cabinMesh.position.set(0, CAR_H + (CAR_H * 0.85) / 2, -0.25);
+    cabinMesh.castShadow = true;
+    playerCar.add(cabinMesh);
+
+    // — vitres (teintées sombres)
+    const matGlass = new THREE.MeshLambertMaterial({ color: 0x1a2a3a, transparent: true, opacity: 0.7 });
+    const windshield = new THREE.Mesh(
+      new THREE.BoxGeometry(CAR_W * 0.82, CAR_H * 0.65, 0.05),
+      matGlass
+    );
+    windshield.position.set(0, CAR_H + 0.38, -0.25 + CAR_L * 0.52 / 2 + 0.03);
+    playerCar.add(windshield);
+
+    // — phares avant (jaune clair)
+    const matHead = new THREE.MeshLambertMaterial({ color: 0xffee88 });
+    [-0.65, 0.65].forEach(side => {
+      const h = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.2, 0.05), matHead);
+      h.position.set(side, CAR_H * 0.55, CAR_L / 2 + 0.03);
+      playerCar.add(h);
+    });
+
+    // — roues (cylindres noirs)
+    const matWheel = new THREE.MeshLambertMaterial({ color: 0x111111 });
+    const matRim   = new THREE.MeshLambertMaterial({ color: 0x888888 });
+    const wheelR   = 0.34;
+    const wheelW   = 0.22;
+    const wheelPosArr = [
+      [-CAR_W / 2 - 0.08,  wheelR,  CAR_L / 2 - 0.85],
+      [ CAR_W / 2 + 0.08,  wheelR,  CAR_L / 2 - 0.85],
+      [-CAR_W / 2 - 0.08,  wheelR, -CAR_L / 2 + 0.85],
+      [ CAR_W / 2 + 0.08,  wheelR, -CAR_L / 2 + 0.85],
+    ];
+    wheelPosArr.forEach(([wx, wy, wz]) => {
+      const wg = new THREE.Group();
+      const tire = new THREE.Mesh(
+        new THREE.CylinderGeometry(wheelR, wheelR, wheelW, 14),
+        matWheel
+      );
+      tire.rotation.z = Math.PI / 2;
+      wg.add(tire);
+      const rim = new THREE.Mesh(
+        new THREE.CylinderGeometry(wheelR * 0.55, wheelR * 0.55, wheelW + 0.01, 8),
+        matRim
+      );
+      rim.rotation.z = Math.PI / 2;
+      wg.add(rim);
+      wg.position.set(wx, wy, wz);
+      playerCar.add(wg);
+    });
+
+    playerCar.position.set(0, 0, -10);
+    scene.add(playerCar);
+
+    // ════════════════════════════════════════
+    //  CLAVIER
+    // ════════════════════════════════════════
+    const keys = {};
+    document.addEventListener('keydown', e => { keys[e.code] = true;  e.preventDefault(); });
+    document.addEventListener('keyup',   e => { keys[e.code] = false; });
+
+    // ════════════════════════════════════════
+    //  PHYSIQUE VOITURE
+    // ════════════════════════════════════════
+    let carSpeed   = 0;   // unités/s
+    let carAngle   = 0;   // cap (rad)
+
+    const MAX_FWD   = 20;
+    const MAX_REV   = 8;
+    const ACCEL     = 12;
+    const BRAKE     = 18;
+    const FRICTION  = 5;
+    const TURN_SPD  = 1.9; // rad/s
+
+    // ════════════════════════════════════════
+    //  CAMÉRA 3ÈME PERSONNE
+    // ════════════════════════════════════════
+    let camYaw = 0;
+    const CAM_DIST   = 11;
+    const CAM_HEIGHT = 4.5;
+    const CAM_SMOOTH = 0.06;
+
+    // ════════════════════════════════════════
+    //  BOUCLE PRINCIPALE
+    // ════════════════════════════════════════
+    const clock = new THREE.Clock();
+
+    function update(dt) {
+      // ── touches ZQSD / WASD ──
+      const fwd  = keys['KeyW'] || keys['KeyZ'];
+      const rev  = keys['KeyS'];
+      const left = keys['KeyA'] || keys['KeyQ'];
+      const rgt  = keys['KeyD'];
+
+      // Accélération
+      if (fwd) {
+        carSpeed = Math.min(carSpeed + ACCEL * dt, MAX_FWD);
+      } else if (rev) {
+        carSpeed = Math.max(carSpeed - BRAKE * dt, -MAX_REV);
+      } else {
+        // Frottement
+        if (carSpeed > 0) carSpeed = Math.max(carSpeed - FRICTION * dt, 0);
+        else              carSpeed = Math.min(carSpeed + FRICTION * dt, 0);
+      }
+
+      // Braquage (proportionnel à la vitesse)
+      if (Math.abs(carSpeed) > 0.2) {
+        const dir = carSpeed > 0 ? 1 : -1;
+        const ts  = TURN_SPD * Math.min(Math.abs(carSpeed) / MAX_FWD, 1);
+        if (left) carAngle += ts * dt * dir;
+        if (rgt)  carAngle -= ts * dt * dir;
+      }
+
+      // Déplacement
+      playerCar.position.x += Math.sin(carAngle) * carSpeed * dt;
+      playerCar.position.z += Math.cos(carAngle) * carSpeed * dt;
+      playerCar.rotation.y  = carAngle;
+
+      // Limites monde
+      const BOUND = WORLD / 2 - 3;
+      playerCar.position.x = Math.max(-BOUND, Math.min(BOUND, playerCar.position.x));
+      playerCar.position.z = Math.max(-BOUND, Math.min(BOUND, playerCar.position.z));
+
+      // ── Caméra 3ème personne ──
+      camYaw += (carAngle - camYaw) * CAM_SMOOTH;
+      camera.position.x = playerCar.position.x - Math.sin(camYaw) * CAM_DIST;
+      camera.position.z = playerCar.position.z - Math.cos(camYaw) * CAM_DIST;
+      camera.position.y = CAM_HEIGHT;
+      camera.lookAt(
+        playerCar.position.x,
+        playerCar.position.y + 0.8,
+        playerCar.position.z
+      );
+
+      // ── HUD vitesse (km/h) ──
+      document.getElementById('speed-display').textContent =
+        Math.abs(Math.round(carSpeed * 3.6));
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = Math.min(clock.getDelta(), 0.05);
+      update(dt);
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // ════════════════════════════════════════
+    //  RESIZE
+    // ════════════════════════════════════════
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
