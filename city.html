@@ -177,6 +177,293 @@
     RD_POS.forEach(rx => makeDashes('z', rx));
 
     // ════════════════════════════════════════
+    //  DÉCOR URBAIN — BÂTIMENTS, ARBRES, LAMPADAIRES
+    // ════════════════════════════════════════
+
+    // ── Pseudo-random déterministe (seed fixe → ville identique à chaque chargement) ──
+    let _s = 31337;
+    function rnd()    { _s = (_s * 1664525 + 1013904223) >>> 0; return _s / 4294967296; }
+    function rr(a, b) { return a + rnd() * (b - a); }
+    function ri(a, b) { return a + Math.floor(rnd() * (b - a + 1)); }
+
+    // ── Palette façades ──
+    const FACADE_PAL = [
+      0xd4c9a8, 0xbfc4c8, 0xf2f0ec, 0x9b8b7a,
+      0xb8c9d4, 0xc8b89a, 0xb0b8c0, 0xe0d5b5,
+      0x7a8c9a, 0xc4b090, 0xe8e0d4, 0xaab8a8,
+    ];
+
+    // ── Texture fenêtres (canvas par bâtiment) ──
+    function makeWinTex(cols, rows) {
+      const cw = 28, ch = 20;
+      const cv = document.createElement('canvas');
+      cv.width  = cols * cw;
+      cv.height = rows * ch;
+      const ctx = cv.getContext('2d');
+      ctx.fillStyle = '#5a5a5a';
+      ctx.fillRect(0, 0, cv.width, cv.height);
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          ctx.fillStyle = rnd() < 0.58 ? '#ffe898' : '#192231';
+          ctx.fillRect(c * cw + 3, r * ch + 3, cw - 6, ch - 6);
+        }
+      }
+      return new THREE.CanvasTexture(cv);
+    }
+
+    // ── Créer un bâtiment ──
+    // type 0 = résidentiel (1-2 ét.), 1 = commerce (3-5 ét.), 2 = downtown (10-30 ét.)
+    function makeBuilding(x, z, type) {
+      let bw, bd, bh;
+      if      (type === 2) { bw = rr(7.5, 13); bd = rr(7.5, 13); bh = rr(30, 72); }
+      else if (type === 1) { bw = rr(7,   12); bd = rr(7,   12); bh = rr(9,  20); }
+      else                 { bw = rr(5,    9); bd = rr(5,    9); bh = rr(3.5, 7); }
+
+      const fc        = FACADE_PAL[ri(0, FACADE_PAL.length - 1)];
+      const facadeMat = new THREE.MeshLambertMaterial({ color: fc });
+      const roofMatB  = new THREE.MeshLambertMaterial({ color: 0x484848 });
+      const baseMat2  = new THREE.MeshLambertMaterial({ color: 0x383838 });
+
+      // Texture fenêtres proportionnelle aux dimensions
+      const winCols = Math.max(2, Math.round(bw / 2.5));
+      const winRows = Math.max(2, Math.round(bh / 3.8));
+      const winTex  = makeWinTex(winCols, winRows);
+      const winMat  = new THREE.MeshLambertMaterial({ map: winTex });
+
+      // Multi-matériaux BoxGeometry : [+X, -X, +Y, -Y, +Z, -Z]
+      // Fenêtres sur les 4 faces verticales, toit/base unis
+      const mats = [winMat, winMat, roofMatB, baseMat2, winMat, winMat];
+      const body = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), mats);
+      body.position.set(x, bh / 2, z);
+      body.castShadow    = true;
+      body.receiveShadow = true;
+      scene.add(body);
+
+      // — Acrotère (toit plat légèrement en saillie) —
+      const roofCap = new THREE.Mesh(
+        new THREE.BoxGeometry(bw + 0.4, 0.35, bd + 0.4),
+        new THREE.MeshLambertMaterial({ color: 0x555555 })
+      );
+      roofCap.position.set(x, bh + 0.18, z);
+      scene.add(roofCap);
+
+      // — Antenne —
+      if (rnd() > 0.42) {
+        const ah = rr(1.2, 4.0);
+        const ant = new THREE.Mesh(
+          new THREE.BoxGeometry(0.1, ah, 0.1),
+          new THREE.MeshLambertMaterial({ color: 0x222222 })
+        );
+        ant.position.set(
+          x + rr(-bw * 0.3, bw * 0.3),
+          bh + ah / 2 + 0.35,
+          z + rr(-bd * 0.3, bd * 0.3)
+        );
+        scene.add(ant);
+      }
+
+      // — Cheminée —
+      if (rnd() > 0.48) {
+        const chH = rr(0.7, 1.8);
+        const chim = new THREE.Mesh(
+          new THREE.BoxGeometry(0.78, chH, 0.78),
+          new THREE.MeshLambertMaterial({ color: 0x7a3f2e })
+        );
+        chim.position.set(
+          x + rr(-bw * 0.28, bw * 0.28),
+          bh + chH / 2 + 0.35,
+          z + rr(-bd * 0.28, bd * 0.28)
+        );
+        scene.add(chim);
+      }
+
+      // — Penthouse (bâtiments downtown seulement) —
+      if (type === 2 && rnd() > 0.5) {
+        const ph = rr(3, 8);
+        const pw = bw * rr(0.35, 0.6);
+        const pd = bd * rr(0.35, 0.6);
+        const penth = new THREE.Mesh(
+          new THREE.BoxGeometry(pw, ph, pd),
+          new THREE.MeshLambertMaterial({ color: fc })
+        );
+        penth.position.set(
+          x + rr(-bw * 0.1, bw * 0.1),
+          bh + ph / 2 + 0.35,
+          z + rr(-bd * 0.1, bd * 0.1)
+        );
+        penth.castShadow = true;
+        scene.add(penth);
+      }
+
+      // — Unités de climatisation (commerce/résidentiel) —
+      if (type < 2 && rnd() > 0.55) {
+        const n = ri(1, 3);
+        for (let k = 0; k < n; k++) {
+          const ac = new THREE.Mesh(
+            new THREE.BoxGeometry(rr(0.6, 1.1), rr(0.4, 0.7), rr(0.5, 0.9)),
+            new THREE.MeshLambertMaterial({ color: 0x9090a0 })
+          );
+          ac.position.set(
+            x + rr(-bw * 0.35, bw * 0.35),
+            bh + 0.4,
+            z + rr(-bd * 0.35, bd * 0.35)
+          );
+          scene.add(ac);
+        }
+      }
+    }
+
+    // ── Zones de placement des bâtiments ──
+    // _INN  = bord intérieur (depuis trottoir côté centre)
+    // _EDGE = bord extérieur (depuis trottoir côté périphérie)
+    const _INN  = 17.7;   // 28 - (6.5 + 2.8) - 1
+    const _EDGE = 38.3;   // 28 + (6.5 + 2.8) + 1
+    const _LIM  = 70;     // profondeur max de placement
+
+    const BLDG_ZONES = [
+      { x1: -_INN,  x2:  _INN,  z1: -_INN,  z2:  _INN,  type: 2, step: 11 }, // downtown
+      { x1: -_INN,  x2:  _INN,  z1: -_LIM,  z2: -_EDGE, type: 1, step: 12 }, // N commercial
+      { x1: -_INN,  x2:  _INN,  z1:  _EDGE, z2:  _LIM,  type: 1, step: 12 }, // S commercial
+      { x1: -_LIM,  x2: -_EDGE, z1: -_INN,  z2:  _INN,  type: 1, step: 12 }, // W commercial
+      { x1:  _EDGE, x2:  _LIM,  z1: -_INN,  z2:  _INN,  type: 1, step: 12 }, // E commercial
+      { x1: -_LIM,  x2: -_EDGE, z1: -_LIM,  z2: -_EDGE, type: 0, step: 10 }, // NW résidentiel
+      { x1:  _EDGE, x2:  _LIM,  z1: -_LIM,  z2: -_EDGE, type: 0, step: 10 }, // NE résidentiel
+      { x1: -_LIM,  x2: -_EDGE, z1:  _EDGE, z2:  _LIM,  type: 0, step: 10 }, // SW résidentiel
+      { x1:  _EDGE, x2:  _LIM,  z1:  _EDGE, z2:  _LIM,  type: 0, step: 10 }, // SE résidentiel
+    ];
+
+    BLDG_ZONES.forEach(({ x1, x2, z1, z2, type, step }) => {
+      for (let bx = x1 + step * 0.5; bx < x2 - step * 0.1; bx += step) {
+        for (let bz = z1 + step * 0.5; bz < z2 - step * 0.1; bz += step) {
+          makeBuilding(
+            bx + rr(-step * 0.18, step * 0.18),
+            bz + rr(-step * 0.18, step * 0.18),
+            type
+          );
+        }
+      }
+    });
+
+    // ════════════════════════════════════════
+    //  ARBRES (alignés sur les trottoirs)
+    // ════════════════════════════════════════
+    const matTrunk   = new THREE.MeshLambertMaterial({ color: 0x5c3a1e });
+    const FOLIAGE_CS = [0x2d7a2d, 0x3d8a2d, 0x257825, 0x3a8030, 0x48903a];
+    const geoTrunkSh = new THREE.CylinderGeometry(0.17, 0.23, 1.5, 6);
+
+    function makeTree(tx, tz) {
+      const trk = new THREE.Mesh(geoTrunkSh, matTrunk);
+      trk.position.set(tx, 0.75, tz);
+      trk.castShadow = true;
+      scene.add(trk);
+      const r   = rr(1.0, 1.6);
+      const col = FOLIAGE_CS[Math.floor(rnd() * FOLIAGE_CS.length)];
+      const fol = new THREE.Mesh(
+        new THREE.SphereGeometry(r, 7, 6),
+        new THREE.MeshLambertMaterial({ color: col })
+      );
+      fol.position.set(tx, 1.5 + r * 0.85, tz);
+      fol.rotation.y = rnd() * Math.PI * 2;
+      fol.castShadow = true;
+      scene.add(fol);
+    }
+
+    // Centre de trottoir = axe route ± (demi-route + demi-trottoir)
+    const SW_MID   = RD_W / 2 + SW_W / 2; // 6.5 + 1.4 = 7.9
+    const TREE_STP = 13;
+
+    // Le long des routes horizontales (arbres espacés sur l'axe X)
+    RD_POS.forEach(rz => {
+      [-1, 1].forEach(side => {
+        const tz = rz + side * SW_MID;
+        for (let tx = -WORLD / 2 + 6; tx < WORLD / 2; tx += TREE_STP) {
+          const nearV = RD_POS.some(rx => Math.abs(tx - rx) < RD_W / 2 + 2);
+          if (!nearV) makeTree(tx, tz);
+        }
+      });
+    });
+
+    // Le long des routes verticales (arbres espacés sur l'axe Z)
+    RD_POS.forEach(rx => {
+      [-1, 1].forEach(side => {
+        const tx = rx + side * SW_MID;
+        for (let tz = -WORLD / 2 + 6; tz < WORLD / 2; tz += TREE_STP) {
+          const nearH = RD_POS.some(rz => Math.abs(tz - rz) < RD_W / 2 + 2);
+          if (!nearH) makeTree(tx, tz);
+        }
+      });
+    });
+
+    // ════════════════════════════════════════
+    //  LAMPADAIRES
+    // ════════════════════════════════════════
+    const matPoleL  = new THREE.MeshLambertMaterial({ color: 0x787878 });
+    const matGlobeL = new THREE.MeshLambertMaterial({
+      color: 0xfff4c0, emissive: new THREE.Color(0xffd060), emissiveIntensity: 0.5
+    });
+    const geoPoleL  = new THREE.CylinderGeometry(0.055, 0.085, 5.2, 6);
+    const geoArmL   = new THREE.BoxGeometry(1.4, 0.07, 0.07);
+    const geoGlobeL = new THREE.SphereGeometry(0.18, 7, 6);
+
+    // armRotY : orientation du bras (angle Y, 0 = bras en +X)
+    function makeLamp(lx, lz, armRotY) {
+      const g = new THREE.Group();
+
+      // Fût vertical
+      const pole = new THREE.Mesh(geoPoleL, matPoleL);
+      pole.position.y = 2.6;
+      g.add(pole);
+
+      // Sous-groupe bras + globe, orientable
+      const armGrp = new THREE.Group();
+      armGrp.position.y   = 5.15;
+      armGrp.rotation.y   = armRotY;
+
+      const arm = new THREE.Mesh(geoArmL, matPoleL);
+      arm.position.set(0.7, 0, 0);
+      armGrp.add(arm);
+
+      const bulb = new THREE.Mesh(geoGlobeL, matGlobeL);
+      bulb.position.set(1.35, -0.15, 0);
+      armGrp.add(bulb);
+
+      g.add(armGrp);
+      g.position.set(lx, 0, lz);
+      scene.add(g);
+    }
+
+    const LAMP_STP = 22;
+    const LAMP_OFF = SW_MID - 0.3; // légèrement vers la route par rapport au centre du trottoir
+
+    // Lampadaires routes horizontales — bras orienté perpendiculairement (vers ±Z)
+    RD_POS.forEach(rz => {
+      [-1, 1].forEach(side => {
+        const lz      = rz + side * LAMP_OFF;
+        // side>0 → lampe au nord de la route → bras pointe sud (-Z) → armRotY = PI/2
+        // side<0 → lampe au sud → bras pointe nord (+Z) → armRotY = -PI/2
+        const armRotY = side > 0 ? Math.PI / 2 : -Math.PI / 2;
+        for (let lx = -WORLD / 2 + LAMP_STP * 0.4; lx < WORLD / 2; lx += LAMP_STP) {
+          const nearV = RD_POS.some(rx => Math.abs(lx - rx) < RD_W / 2 + 1);
+          if (!nearV) makeLamp(lx, lz, armRotY);
+        }
+      });
+    });
+
+    // Lampadaires routes verticales — bras orienté vers ±X
+    RD_POS.forEach(rx => {
+      [-1, 1].forEach(side => {
+        const lx      = rx + side * LAMP_OFF;
+        // side>0 → lampe à l'est → bras pointe ouest (-X) → armRotY = PI
+        // side<0 → lampe à l'ouest → bras pointe est (+X) → armRotY = 0
+        const armRotY = side > 0 ? Math.PI : 0;
+        for (let lz = -WORLD / 2 + LAMP_STP * 0.4; lz < WORLD / 2; lz += LAMP_STP) {
+          const nearH = RD_POS.some(rz => Math.abs(lz - rz) < RD_W / 2 + 1);
+          if (!nearH) makeLamp(lx, lz, armRotY);
+        }
+      });
+    });
+
+    // ════════════════════════════════════════
     //  VOITURE JOUEUR
     //  Type : berline rouge, mesh box simple
     //  Structure : caisse + cabine + 4 roues
