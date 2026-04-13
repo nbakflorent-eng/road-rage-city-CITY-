@@ -34,8 +34,18 @@
     </div>
   </div>
 
-  <!-- Three.js r128 CDN -->
+  <!-- Three.js r128 CDN + Loaders -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/FBXLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/fflate.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/SkeletonUtils.js"></script>
+  <script src="npc-cars.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/FBXLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/fflate.min.js"></script>
 
   <script>
     // ════════════════════════════════════════
@@ -213,11 +223,14 @@
 
     // ── Créer un bâtiment ──
     // type 0 = résidentiel (1-2 ét.), 1 = commerce (3-5 ét.), 2 = downtown (10-30 ét.)
+    const buildingBounds = []; // AABB bâtiments pour collision joueur
+
     function makeBuilding(x, z, type) {
       let bw, bd, bh;
       if      (type === 2) { bw = rr(7.5, 13); bd = rr(7.5, 13); bh = rr(30, 72); }
       else if (type === 1) { bw = rr(7,   12); bd = rr(7,   12); bh = rr(9,  20); }
       else                 { bw = rr(5,    9); bd = rr(5,    9); bh = rr(3.5, 7); }
+      buildingBounds.push({ x, z, hw: bw * 0.5 + 0.4, hd: bd * 0.5 + 0.4 });
 
       const fc        = FACADE_PAL[ri(0, FACADE_PAL.length - 1)];
       const facadeMat = new THREE.MeshLambertMaterial({ color: fc });
@@ -464,6 +477,179 @@
     });
 
     // ════════════════════════════════════════
+    //  FEUX DE CIRCULATION
+    //  1 poteau par intersection (±28, ±28)
+    //  Sphères : rouge y=3, orange y=4, vert y=5
+    //  Cycle : rouge 5s → vert 5s → orange 1s
+    // ════════════════════════════════════════
+
+    const _TL_POS    = [{ x:28,z:28 },{ x:28,z:-28 },{ x:-28,z:28 },{ x:-28,z:-28 }];
+    const _TL_DUR    = { red:5.0, green:5.0, orange:1.0 };
+    const _TL_NEXT   = { red:'green', green:'orange', orange:'red' };
+
+    const _tlOffMat  = [
+      new THREE.MeshLambertMaterial({ color: 0x330000 }),
+      new THREE.MeshLambertMaterial({ color: 0x332200 }),
+      new THREE.MeshLambertMaterial({ color: 0x003300 }),
+    ];
+    const _tlOnMat   = [
+      new THREE.MeshLambertMaterial({ color:0xff2200, emissive:new THREE.Color(0xff2200), emissiveIntensity:0.9 }),
+      new THREE.MeshLambertMaterial({ color:0xff9900, emissive:new THREE.Color(0xff9900), emissiveIntensity:0.9 }),
+      new THREE.MeshLambertMaterial({ color:0x22ff44, emissive:new THREE.Color(0x22ff44), emissiveIntensity:0.9 }),
+    ];
+    const _tlPoleMat = new THREE.MeshLambertMaterial({ color: 0x555555 });
+    const _tlGeoSph  = new THREE.SphereGeometry(0.28, 8, 6);
+    const _tlGeoPole = new THREE.CylinderGeometry(0.08, 0.12, 4, 8);
+
+    const _trafficLights = [];
+    _TL_POS.forEach(({ x, z }, idx) => {
+      // Poteau gris, centré à y=2 (hauteur 4 → de y=0 à y=4)
+      const pole = new THREE.Mesh(_tlGeoPole, _tlPoleMat);
+      pole.position.set(x, 2, z);
+      pole.castShadow = true;
+      scene.add(pole);
+      // 3 sphères : rouge y=3, orange y=4, vert y=5
+      const spheres = [3, 4, 5].map((y, i) => {
+        const s = new THREE.Mesh(_tlGeoSph, _tlOffMat[i]);
+        s.position.set(x, y, z);
+        scene.add(s);
+        return s;
+      });
+      // Phases alternées : idx pair=rouge, impair=vert
+      const phase = idx % 2 === 0 ? 'red' : 'green';
+      _trafficLights.push({ spheres, phase, timer: _TL_DUR[phase] });
+    });
+
+    function _applyTLPhase(tl) {
+      const on = { red:0, orange:1, green:2 }[tl.phase];
+      tl.spheres.forEach((s, i) => { s.material = i === on ? _tlOnMat[i] : _tlOffMat[i]; });
+    }
+    _trafficLights.forEach(_applyTLPhase);
+
+    function _updateTrafficLights(dt) {
+      _trafficLights.forEach(tl => {
+        tl.timer -= dt;
+        if (tl.timer <= 0) {
+          tl.phase = _TL_NEXT[tl.phase];
+          tl.timer = _TL_DUR[tl.phase];
+          _applyTLPhase(tl);
+        }
+      });
+    }
+
+    // ════════════════════════════════════════
+    //  VOITURES PNJ — vrais modèles FBX/GLB (npc-cars.js)
+    //  Fréquences : lowpoly×3, mits_mini×2, murphy×3,
+    //               shvan×2, utility×2, ambulance×1 (externe)
+    // ════════════════════════════════════════
+
+    // ── Helpers de chargement (même approche que lobby.html) ──
+    function _b64toBlob(b64, mime) {
+      const bin = atob(b64), buf = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      return new Blob([buf], { type: mime });
+    }
+    function _loadModelURL(url, type, cb) {
+      if (type === 'glb') {
+        const l = new THREE.GLTFLoader();
+        const d = new THREE.DRACOLoader();
+        d.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+        l.setDRACOLoader(d);
+        l.load(url, g => cb(g.scene), null, () => cb(null));
+      } else {
+        const l = new THREE.FBXLoader();
+        l.load(url, m => cb(m), null, () => cb(null));
+      }
+    }
+    function _loadModelB64(key, cb) {
+      const a = NPC_CAR_ASSETS[key]; if (!a) { cb(null); return; }
+      const mime = a.type === 'glb' ? 'model/gltf-binary' : 'application/octet-stream';
+      const url  = URL.createObjectURL(_b64toBlob(a.b64, mime));
+      _loadModelURL(url, a.type, m => { URL.revokeObjectURL(url); cb(m); });
+    }
+
+    // Normalise : FBX scale 0.01, GLB auto-scale (cible 4.2u), grounded à y=0
+    function _normalizeNPC(model, type) {
+      model.position.set(0, 0, 0);
+      model.rotation.set(0, 0, 0);
+      if (type === 'fbx') {
+        model.scale.setScalar(0.01);
+      } else {
+        model.scale.set(1, 1, 1);
+        const box = new THREE.Box3().setFromObject(model);
+        const sz  = box.getSize(new THREE.Vector3());
+        const sc  = 4.2 / (Math.max(sz.x, sz.y, sz.z) || 1);
+        model.scale.setScalar(sc);
+      }
+      const box2 = new THREE.Box3().setFromObject(model);
+      model.position.y = -box2.min.y;
+      model.traverse(ch => { if (ch.isMesh) { ch.castShadow = true; ch.receiveShadow = true; } });
+    }
+
+    // ── Définitions & routes ──
+    const NPC_DEFS = [
+      { key:'lowpoly',   type:'glb', freq:3 },
+      { key:'mits_mini', type:'glb', freq:2 },
+      { key:'murphy',    type:'fbx', freq:3 },
+      { key:'shvan',     type:'fbx', freq:2 },
+      { key:'utility',   type:'fbx', freq:2 },
+      { key:'ambulance', type:'glb', freq:1 }, // fichier externe ambulance.glb
+    ];
+    const NPC_ROUTES = [
+      { axis:'x', fixed:-28 }, { axis:'x', fixed:28 },
+      { axis:'z', fixed:-28 }, { axis:'z', fixed:28 },
+    ];
+    const NPC_BOUND = WORLD / 2 - 3;
+    const npcCars   = [];
+    const _npcTmpl  = {};
+    let   _npcLoadIdx = 0;
+
+    function _npcPlaceModel(tmplModel, type) {
+      const mesh  = (typeof THREE.SkeletonUtils !== 'undefined')
+                      ? THREE.SkeletonUtils.clone(tmplModel)
+                      : tmplModel.clone(true);
+      const route = NPC_ROUTES[Math.floor(rnd() * 4)];
+      const dir   = rnd() < 0.5 ? 1 : -1;
+      const t     = (rnd() * 2 - 1) * NPC_BOUND;
+      const speed = 6 + rnd() * 10;
+      if (route.axis === 'x') {
+        mesh.position.set(t, 0, route.fixed + dir * 3);
+        mesh.rotation.y = dir > 0 ? -Math.PI / 2 : Math.PI / 2;
+      } else {
+        mesh.position.set(route.fixed - dir * 3, 0, t);
+        mesh.rotation.y = dir > 0 ? 0 : Math.PI;
+      }
+      scene.add(mesh);
+      npcCars.push({ mesh, route, dir, t, speed });
+    }
+
+    function _npcSpawnAll() {
+      // Pool pondéré avec modèles réellement chargés
+      const pool = [];
+      NPC_DEFS.forEach(d => { if (_npcTmpl[d.key]) for (let i=0;i<d.freq;i++) pool.push(d); });
+      if (!pool.length) { console.warn('Aucun modèle NPC chargé — PNJ absents'); return; }
+      for (let i = 0; i < 15; i++) {
+        const def = pool[Math.floor(rnd() * pool.length)];
+        _npcPlaceModel(_npcTmpl[def.key], def.type);
+      }
+    }
+
+    function _npcLoadNext() {
+      if (_npcLoadIdx >= NPC_DEFS.length) { _npcSpawnAll(); return; }
+      const def = NPC_DEFS[_npcLoadIdx++];
+      const done = m => {
+        if (m) { _normalizeNPC(m, def.type); _npcTmpl[def.key] = m; }
+        _npcLoadNext();
+      };
+      if (def.key === 'ambulance') {
+        _loadModelURL('ambulance.glb', 'glb', done);
+      } else {
+        _loadModelB64(def.key, done);
+      }
+    }
+    _npcLoadNext(); // démarre le chargement asynchrone
+
+    // ════════════════════════════════════════
     //  VOITURE JOUEUR
     //  Type : berline rouge, mesh box simple
     //  Structure : caisse + cabine + 4 roues
@@ -612,6 +798,22 @@
       playerCar.position.x = Math.max(-BOUND, Math.min(BOUND, playerCar.position.x));
       playerCar.position.z = Math.max(-BOUND, Math.min(BOUND, playerCar.position.z));
 
+      // ── Collision bâtiments (AABB) ──
+      // Rayon d'approximation de la voiture : ~2.2 unités (demi-longueur)
+      const _CAR_R = 2.2;
+      for (const b of buildingBounds) {
+        const ox   = playerCar.position.x - b.x;
+        const oz   = playerCar.position.z - b.z;
+        const penX = b.hw + _CAR_R - Math.abs(ox);
+        const penZ = b.hd + _CAR_R - Math.abs(oz);
+        if (penX > 0 && penZ > 0) {
+          // Éjecter le long de l'axe de moindre pénétration
+          if (penX < penZ) playerCar.position.x += Math.sign(ox) * penX;
+          else             playerCar.position.z += Math.sign(oz) * penZ;
+          carSpeed *= 0.15; // amortissement à l'impact
+        }
+      }
+
       // ── Caméra 3ème personne ──
       camYaw += (carAngle - camYaw) * CAM_SMOOTH;
       camera.position.x = playerCar.position.x - Math.sin(camYaw) * CAM_DIST;
@@ -622,6 +824,21 @@
         playerCar.position.y + 0.8,
         playerCar.position.z
       );
+
+      // ── Feux de circulation ──
+      _updateTrafficLights(dt);
+
+      // ── PNJ ──
+      npcCars.forEach(npc => {
+        npc.t += npc.dir * npc.speed * dt;
+        if (npc.t >  NPC_BOUND) npc.t -= NPC_BOUND * 2;
+        if (npc.t < -NPC_BOUND) npc.t += NPC_BOUND * 2;
+        if (npc.route.axis === 'x') {
+          npc.mesh.position.x = npc.t;
+        } else {
+          npc.mesh.position.z = npc.t;
+        }
+      });
 
       // ── HUD vitesse (km/h) ──
       document.getElementById('speed-display').textContent =
