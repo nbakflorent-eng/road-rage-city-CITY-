@@ -464,194 +464,56 @@
     });
 
     // ════════════════════════════════════════
-    //  VOITURES PNJ
-    //  Types : berline, SUV, camion, utility (fréquence normale), ambulance (rare)
-    //  Roulent sur les 4 routes, changent de direction aux intersections
+    //  VOITURES PNJ — npcCars (15 véhicules)
+    //  Ligne droite sur leur route, rebouclage aux bords du monde
     // ════════════════════════════════════════
 
-    const NPC_DEFS = [
-      { id:'berline',   colors:[0x4488cc,0xaaaaaa,0xffffff,0xcc7722,0x44aa44,0x993333],
-        l:3.8, w:1.9, h:0.70, cabH:0.58, cabFrac:0.44, freq:3, spd:[8,14] },
-      { id:'suv',       colors:[0x222222,0x225566,0x663322,0x998844,0x335533],
-        l:4.4, w:2.1, h:0.92, cabH:0.68, cabFrac:0.48, freq:2, spd:[7,12] },
-      { id:'camion',    colors:[0xcc3311,0x2244aa,0x777777,0x225522,0xaa7722],
-        l:7.0, w:2.3, h:1.05, cabH:0.82, cabFrac:0.28, freq:2, spd:[5,9]  },
-      { id:'utility',   colors:[0xffffff,0xffdd22,0xaaddff],
-        l:5.2, w:2.2, h:1.15, cabH:0.88, cabFrac:0.42, freq:2, spd:[6,11] },
-      { id:'ambulance', colors:[0xffffff],
-        l:5.5, w:2.2, h:1.45, cabH:1.08, cabFrac:0.44, freq:1, spd:[10,18] },
+    // 4 routes disponibles
+    // axis:'x' = horizontale (t varie sur X, fixed = z constant)
+    // axis:'z' = verticale   (t varie sur Z, fixed = x constant)
+    const NPC_ROUTES = [
+      { axis: 'x', fixed: -28 },
+      { axis: 'x', fixed:  28 },
+      { axis: 'z', fixed: -28 },
+      { axis: 'z', fixed:  28 },
     ];
+    const NPC_COLORS = [0xcc1111, 0x2255cc, 0xffffff, 0x888888, 0xeecc00];
+    const NPC_BOUND  = WORLD / 2 - 3; // borne de rebouclage (±117)
 
-    // Pool pondéré par fréquence
-    const _NPC_POOL = [];
-    NPC_DEFS.forEach(d => { for (let i = 0; i < d.freq; i++) _NPC_POOL.push(d); });
-    function _pickDef() { return _NPC_POOL[ri(0, _NPC_POOL.length - 1)]; }
-
-    // Matériaux partagés PNJ
-    const _matNPCWheel = new THREE.MeshLambertMaterial({ color: 0x111111 });
-    const _matNPCRim   = new THREE.MeshLambertMaterial({ color: 0x888888 });
-    const _matNPCGlass = new THREE.MeshLambertMaterial({ color: 0x1a2a3a, transparent: true, opacity: 0.6 });
-    const _matAmbuRed  = new THREE.MeshLambertMaterial({ color: 0xff1111 });
-
-    function _buildNPCMesh(def) {
+    function buildNPCBox(color) {
       const g   = new THREE.Group();
-      const col = def.colors[ri(0, def.colors.length - 1)];
-      const mat = new THREE.MeshLambertMaterial({ color: col });
-
+      const mat = new THREE.MeshLambertMaterial({ color });
       // Caisse
-      const body = new THREE.Mesh(new THREE.BoxGeometry(def.w, def.h, def.l), mat);
-      body.position.y = def.h / 2;
+      const body = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.72, 4.0), mat);
+      body.position.y = 0.36;
       body.castShadow = true;
       g.add(body);
-
       // Cabine
-      const cabin = new THREE.Mesh(
-        new THREE.BoxGeometry(def.w * 0.86, def.cabH, def.l * def.cabFrac),
-        mat
-      );
-      cabin.position.set(0, def.h + def.cabH / 2, -def.l * 0.05);
+      const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.56, 1.8), mat);
+      cabin.position.set(0, 0.72 + 0.28, -0.15);
       cabin.castShadow = true;
       g.add(cabin);
-
-      // Pare-brise avant
-      const wind = new THREE.Mesh(
-        new THREE.BoxGeometry(def.w * 0.8, def.cabH * 0.58, 0.05),
-        _matNPCGlass
-      );
-      wind.position.set(0, def.h + def.cabH * 0.48,
-        def.l * def.cabFrac / 2 - def.l * 0.05 + 0.03);
-      g.add(wind);
-
-      // Ambulance : bande rouge latérale + croix sur le toit
-      if (def.id === 'ambulance') {
-        const stripe = new THREE.Mesh(
-          new THREE.BoxGeometry(def.w + 0.02, 0.24, def.l * 0.70),
-          _matAmbuRed
-        );
-        stripe.position.set(0, def.h * 0.52, 0);
-        g.add(stripe);
-        const cH = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.06, 0.26), _matAmbuRed);
-        cH.position.set(0, def.h + def.cabH + 0.04, 0);
-        g.add(cH);
-        const cV = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.06, 0.88), _matAmbuRed);
-        cV.position.set(0, def.h + def.cabH + 0.04, 0);
-        g.add(cV);
-      }
-
-      // Phares avant (jaune)
-      const matHL = new THREE.MeshLambertMaterial({ color: 0xffee88 });
-      [-def.w * 0.3, def.w * 0.3].forEach(sx => {
-        const hl = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.15, 0.05), matHL);
-        hl.position.set(sx, def.h * 0.52, def.l / 2 + 0.03);
-        g.add(hl);
-      });
-
-      // Feux arrière (rouge)
-      const matTL = new THREE.MeshLambertMaterial({ color: 0xcc1111 });
-      [-def.w * 0.3, def.w * 0.3].forEach(sx => {
-        const tl = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.04), matTL);
-        tl.position.set(sx, def.h * 0.52, -def.l / 2 - 0.02);
-        g.add(tl);
-      });
-
-      // Roues
-      const wr = 0.30, ww = 0.18;
-      [
-        [-def.w / 2 - 0.07, wr,  def.l / 2 - 0.80],
-        [ def.w / 2 + 0.07, wr,  def.l / 2 - 0.80],
-        [-def.w / 2 - 0.07, wr, -def.l / 2 + 0.80],
-        [ def.w / 2 + 0.07, wr, -def.l / 2 + 0.80],
-      ].forEach(([wx, wy, wz]) => {
-        const tire = new THREE.Mesh(
-          new THREE.CylinderGeometry(wr, wr, ww, 10), _matNPCWheel);
-        tire.rotation.z = Math.PI / 2;
-        tire.position.set(wx, wy, wz);
-        g.add(tire);
-        const rim = new THREE.Mesh(
-          new THREE.CylinderGeometry(wr * 0.5, wr * 0.5, ww + 0.01, 7), _matNPCRim);
-        rim.rotation.z = Math.PI / 2;
-        rim.position.set(wx, wy, wz);
-        g.add(rim);
-      });
-
       return g;
     }
 
-    // ── Réseau routier PNJ ──
-    // isH=true  → route horizontale (z=roadPos fixe, t=x varie)
-    // isH=false → route verticale   (x=roadPos fixe, t=z varie)
-    // Circulation à droite :
-    //   H, dir=+1 (+X) → z = roadPos + LANE
-    //   H, dir=-1 (-X) → z = roadPos - LANE
-    //   V, dir=+1 (+Z) → x = roadPos - LANE
-    //   V, dir=-1 (-Z) → x = roadPos + LANE
-    const _NPC_LANE = 3.0;
-    const _NPC_WBND = WORLD / 2 - 5; // borne de rebouclage
-
-    function _npcApplyPos(npc) {
-      if (npc.isH) {
-        npc.mesh.position.set(npc.t, 0, npc.roadPos + npc.dir * _NPC_LANE);
-        npc.mesh.rotation.y = npc.dir > 0 ? -Math.PI / 2 : Math.PI / 2;
-      } else {
-        npc.mesh.position.set(npc.roadPos - npc.dir * _NPC_LANE, 0, npc.t);
-        npc.mesh.rotation.y = npc.dir > 0 ? 0 : Math.PI;
-      }
-    }
-
-    function _spawnNPC() {
-      const def   = _pickDef();
-      const mesh  = _buildNPCMesh(def);
-      const isH   = rnd() < 0.5;
-      const roadPos = RD_POS[ri(0, 1)];
+    const npcCars = [];
+    for (let i = 0; i < 15; i++) {
+      const route = NPC_ROUTES[Math.floor(rnd() * 4)];
       const dir   = rnd() < 0.5 ? 1 : -1;
-      const t     = rr(-_NPC_WBND, _NPC_WBND);
-      const speed = rr(def.spd[0], def.spd[1]);
-      const npc   = { mesh, def, isH, roadPos, dir, t, speed, prevT: t };
-      _npcApplyPos(npc);
+      const t     = (rnd() * 2 - 1) * NPC_BOUND;
+      const speed = 6 + rnd() * 10;   // 6–16 u/s
+      const color = NPC_COLORS[Math.floor(rnd() * NPC_COLORS.length)];
+      const mesh  = buildNPCBox(color);
+
+      if (route.axis === 'x') {
+        mesh.position.set(t, 0, route.fixed + dir * 3);
+        mesh.rotation.y = dir > 0 ? -Math.PI / 2 : Math.PI / 2;
+      } else {
+        mesh.position.set(route.fixed - dir * 3, 0, t);
+        mesh.rotation.y = dir > 0 ? 0 : Math.PI;
+      }
       scene.add(mesh);
-      return npc;
-    }
-
-    const _npcs = [];
-    for (let i = 0; i < 28; i++) _npcs.push(_spawnNPC());
-
-    function _updateNPCs(dt) {
-      _npcs.forEach(npc => {
-        const prevT = npc.t;
-        npc.t += npc.dir * npc.speed * dt;
-
-        // Rebouclage aux bords du monde
-        if (npc.t >  _NPC_WBND) npc.t -= _NPC_WBND * 2;
-        if (npc.t < -_NPC_WBND) npc.t += _NPC_WBND * 2;
-
-        // Détection de passage d'intersection → possible changement de direction
-        for (const it of RD_POS) {
-          // A-t-on franchi it entre prevT et t ?
-          if ((prevT - it) * (npc.t - it) < 0) {
-            if (rnd() < 0.40) {
-              // Tourner sur la route perpendiculaire passant par it
-              if (npc.isH) {
-                // H → V : la V-route est à x = it
-                const curZ  = npc.roadPos + npc.dir * _NPC_LANE;
-                npc.isH     = false;
-                npc.roadPos = it;
-                npc.t       = curZ;
-                npc.dir     = rnd() < 0.5 ? 1 : -1;
-              } else {
-                // V → H : la H-route est à z = it
-                const curX  = npc.roadPos - npc.dir * _NPC_LANE;
-                npc.isH     = true;
-                npc.roadPos = it;
-                npc.t       = curX;
-                npc.dir     = rnd() < 0.5 ? 1 : -1;
-              }
-            }
-            break;
-          }
-        }
-
-        _npcApplyPos(npc);
-      });
+      npcCars.push({ mesh, route, dir, t, speed });
     }
 
     // ════════════════════════════════════════
@@ -814,8 +676,17 @@
         playerCar.position.z
       );
 
-      // ── Voitures PNJ ──
-      _updateNPCs(dt);
+      // ── PNJ ──
+      npcCars.forEach(npc => {
+        npc.t += npc.dir * npc.speed * dt;
+        if (npc.t >  NPC_BOUND) npc.t -= NPC_BOUND * 2;
+        if (npc.t < -NPC_BOUND) npc.t += NPC_BOUND * 2;
+        if (npc.route.axis === 'x') {
+          npc.mesh.position.x = npc.t;
+        } else {
+          npc.mesh.position.z = npc.t;
+        }
+      });
 
       // ── HUD vitesse (km/h) ──
       document.getElementById('speed-display').textContent =
