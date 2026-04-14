@@ -542,10 +542,14 @@
     //  police ×2  ambulance/firetruck ×1  → 20 voitures
     // ════════════════════════════════════════
 
-    // ── GLTFLoader URL-relative ──
-    function _loadGLB(url, cb) {
-      const loader = new THREE.GLTFLoader();
-      loader.load(url, g => cb(g.scene), null, () => { console.warn('GLB manquant:', url); cb(null); });
+    // ── GLTFLoader — URL absolue + résolution texture depuis racine du repo ──
+    const NPC_BASE = 'https://nbakflorent-eng.github.io/road-rage-city-CITY-/';
+    function _loadGLB(key, cb) {
+      const manager = new THREE.LoadingManager();
+      // Redirige toutes les ressources (y compris Textures/colormap.png) vers la racine
+      manager.setURLModifier(url => NPC_BASE + url.split('/').pop());
+      const loader = new THREE.GLTFLoader(manager);
+      loader.load(NPC_BASE + key, g => cb(g.scene), null, () => { console.warn('GLB manquant:', key); cb(null); });
     }
 
     // Normalise : scale=1.5, grounded y=0, ombres
