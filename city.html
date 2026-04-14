@@ -618,7 +618,7 @@
     function _npcSpawnAll() {
       const pool = _buildWeightedPool(KENNEY_DEFS, _npcTmpl);
       if (!pool.length) { console.warn('Aucun GLB chargé — PNJ absents'); return; }
-      for (let i = 0; i < 20; i++) {
+      for (let i = 0; i < 12; i++) {
         const def = pool[Math.floor(rnd() * pool.length)];
         _npcPlaceModel(_npcTmpl[def.key]);
       }
@@ -813,8 +813,26 @@
       _updateTrafficLights(dt);
 
       // ── PNJ ──
-      npcCars.forEach(npc => {
-        npc.t += npc.dir * npc.speed * dt;
+      npcCars.forEach((npc, idx) => {
+        // Collision PNJ–PNJ : freine si un autre PNJ est à moins de 5u
+        for (let j = 0; j < npcCars.length; j++) {
+          if (j === idx) continue;
+          const o = npcCars[j];
+          const dx = npc.mesh.position.x - o.mesh.position.x;
+          const dz = npc.mesh.position.z - o.mesh.position.z;
+          if (dx*dx + dz*dz < 25) return; // distance² < 5²
+        }
+        // Position candidate
+        const newT = npc.t + npc.dir * npc.speed * dt;
+        const nx = npc.route.axis === 'x' ? newT : npc.mesh.position.x;
+        const nz = npc.route.axis === 'x' ? npc.mesh.position.z : newT;
+        // Collision PNJ–bâtiments : s'arrête si AABB hit
+        const _NR = 2.0;
+        for (const b of buildingBounds) {
+          if (Math.abs(nx - b.x) < b.hw + _NR && Math.abs(nz - b.z) < b.hd + _NR) return;
+        }
+        // Déplacement validé + rebouclage
+        npc.t = newT;
         if (npc.t >  NPC_BOUND) npc.t -= NPC_BOUND * 2;
         if (npc.t < -NPC_BOUND) npc.t += NPC_BOUND * 2;
         if (npc.route.axis === 'x') {
