@@ -516,15 +516,17 @@ var KENNEY_ASSETS = {
 
     const _trafficLights = [];
     _TL_POS.forEach(({ x, z }, idx) => {
-      // Poteau gris, centré à y=2 (hauteur 4 → de y=0 à y=4)
+      // Poteau sur le trottoir extérieur (côté droit de l'intersection)
+      const sx = Math.sign(x), sz = Math.sign(z);
+      const px = x + sx * 8, pz = z + sz * 8; // décalé au coin du trottoir
       const pole = new THREE.Mesh(_tlGeoPole, _tlPoleMat);
-      pole.position.set(x, 2, z);
+      pole.position.set(px, 2, pz);
       pole.castShadow = true;
       scene.add(pole);
       // 3 sphères : rouge y=3, orange y=4, vert y=5
       const spheres = [3, 4, 5].map((y, i) => {
         const s = new THREE.Mesh(_tlGeoSph, _tlOffMat[i]);
-        s.position.set(x, y, z);
+        s.position.set(px, y, pz);
         scene.add(s);
         return s;
       });
@@ -749,7 +751,7 @@ var KENNEY_ASSETS = {
       playerCar.add(wg);
     });
 
-    playerCar.position.set(0, 0, -10);
+    playerCar.position.set(-50, 0, -28); // route z=-28, lane droite, face est
     scene.add(playerCar);
 
     // ════════════════════════════════════════
@@ -763,7 +765,7 @@ var KENNEY_ASSETS = {
     //  PHYSIQUE VOITURE
     // ════════════════════════════════════════
     let carSpeed   = 0;   // unités/s
-    let carAngle   = 0;   // cap (rad)
+    let carAngle   = Math.PI / 2; // cap initial : face est sur route z=-28
 
     const MAX_FWD   = 20;
     const MAX_REV   = 8;
@@ -775,7 +777,7 @@ var KENNEY_ASSETS = {
     // ════════════════════════════════════════
     //  CAMÉRA 3ÈME PERSONNE
     // ════════════════════════════════════════
-    let camYaw = 0;
+    let camYaw = Math.PI / 2;
     const CAM_DIST   = 11;
     const CAM_HEIGHT = 4.5;
     const CAM_SMOOTH = 0.06;
@@ -811,7 +813,9 @@ var KENNEY_ASSETS = {
         if (rgt)  carAngle -= ts * dt * dir;
       }
 
-      // Déplacement
+      // Déplacement — sauvegarde pour roll-back collision
+      const _prevX = playerCar.position.x;
+      const _prevZ = playerCar.position.z;
       playerCar.position.x += Math.sin(carAngle) * carSpeed * dt;
       playerCar.position.z += Math.cos(carAngle) * carSpeed * dt;
       playerCar.rotation.y  = carAngle;
@@ -821,19 +825,16 @@ var KENNEY_ASSETS = {
       playerCar.position.x = Math.max(-BOUND, Math.min(BOUND, playerCar.position.x));
       playerCar.position.z = Math.max(-BOUND, Math.min(BOUND, playerCar.position.z));
 
-      // ── Collision bâtiments (AABB) ──
-      // Rayon d'approximation de la voiture : ~2.2 unités (demi-longueur)
+      // ── Collision bâtiments (AABB) — annule le déplacement si collision ──
       const _CAR_R = 2.2;
       for (const b of buildingBounds) {
-        const ox   = playerCar.position.x - b.x;
-        const oz   = playerCar.position.z - b.z;
-        const penX = b.hw + _CAR_R - Math.abs(ox);
-        const penZ = b.hd + _CAR_R - Math.abs(oz);
-        if (penX > 0 && penZ > 0) {
-          // Éjecter le long de l'axe de moindre pénétration
-          if (penX < penZ) playerCar.position.x += Math.sign(ox) * penX;
-          else             playerCar.position.z += Math.sign(oz) * penZ;
-          carSpeed *= 0.15; // amortissement à l'impact
+        const ox = playerCar.position.x - b.x;
+        const oz = playerCar.position.z - b.z;
+        if (Math.abs(ox) < b.hw + _CAR_R && Math.abs(oz) < b.hd + _CAR_R) {
+          playerCar.position.x = _prevX;
+          playerCar.position.z = _prevZ;
+          carSpeed *= 0.1; // rebond amortissement
+          break;
         }
       }
 
