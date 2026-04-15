@@ -635,6 +635,86 @@
     _npcLoadNext(); // démarre le chargement GLB asynchrone
 
     // ════════════════════════════════════════
+    //  PIÉTONS PNJ — 18 personnages Kenney Blocky animés
+    // ════════════════════════════════════════
+
+    const PED_BASE  = 'https://nbakflorent-eng.github.io/road-rage-city-CITY-/';
+    const PED_CHARS = 'abcdefghijklmnopqr'.split('');
+    // Trottoirs extérieurs (4 bandes)
+    const PED_TRACKS = [
+      { fixedAxis:'z', fixedVal:-35.5, walkAxis:'x' },
+      { fixedAxis:'z', fixedVal: 35.5, walkAxis:'x' },
+      { fixedAxis:'x', fixedVal:-35.5, walkAxis:'z' },
+      { fixedAxis:'x', fixedVal: 35.5, walkAxis:'z' },
+    ];
+    const PED_BOUND = 115;
+    const peds = [];
+    let _walkClip = null;
+
+    function _pedSetRot(ped) {
+      const d = ped.dir;
+      if (ped.track.walkAxis === 'x') ped.mesh.rotation.y = d > 0 ? -Math.PI/2 : Math.PI/2;
+      else                             ped.mesh.rotation.y = d > 0 ? 0 : Math.PI;
+    }
+
+    function _placePed(charScene, track, pos) {
+      const mesh = typeof THREE.SkeletonUtils !== 'undefined'
+        ? THREE.SkeletonUtils.clone(charScene) : charScene.clone(true);
+      mesh.scale.set(1.5, 1.5, 1.5);
+      if (track.fixedAxis === 'z') mesh.position.set(pos, 0, track.fixedVal);
+      else                          mesh.position.set(track.fixedVal, 0, pos);
+      const box = new THREE.Box3().setFromObject(mesh);
+      mesh.position.y = -box.min.y;
+      mesh.traverse(ch => { if (ch.isMesh) ch.castShadow = true; });
+      const dir = rnd() < 0.5 ? 1 : -1;
+      const mixer = new THREE.AnimationMixer(mesh);
+      if (_walkClip) mixer.clipAction(_walkClip).play();
+      scene.add(mesh);
+      const ped = { mesh, mixer, track, pos, dir, speed: 1.5 + rnd() };
+      _pedSetRot(ped);
+      peds.push(ped);
+    }
+
+    function _spawnPeds(scenes) {
+      if (!scenes.length) { console.warn('Aucun character GLB chargé — piétons absents'); return; }
+      const dist = [5, 5, 4, 4]; // total 18
+      let ci = 0;
+      PED_TRACKS.forEach((track, ti) => {
+        const n = dist[ti];
+        for (let i = 0; i < n; i++) {
+          const pos = -PED_BOUND + (PED_BOUND * 2) / (n + 1) * (i + 1);
+          _placePed(scenes[ci % scenes.length], track, pos);
+          ci++;
+        }
+      });
+    }
+
+    (function _initPeds() {
+      // 1. Charge X Bot@Walking.glb → extraire clip "mixamo.com"
+      const xl = new THREE.GLTFLoader();
+      xl.load(PED_BASE + 'X Bot@Walking.glb', g => {
+        _walkClip = g.animations.find(a => a.name === 'mixamo.com') || g.animations[0] || null;
+        if (!_walkClip) console.warn('Clip marche introuvable dans X Bot@Walking.glb');
+        _loadPedChars();
+      }, null, () => { console.warn('X Bot@Walking.glb introuvable'); _loadPedChars(); });
+
+      // 2. Charge 15 characters aléatoires parmi a–r
+      function _loadPedChars() {
+        const keys = [...PED_CHARS].sort(() => rnd() - 0.5).slice(0, 15);
+        const scenes = []; let idx = 0;
+        function next() {
+          if (idx >= keys.length) { _spawnPeds(scenes); return; }
+          const k = keys[idx++];
+          const cl = new THREE.GLTFLoader();
+          cl.load(PED_BASE + 'character-' + k + '.glb', g => {
+            scenes.push(g.scene); next();
+          }, null, () => { console.warn('character-' + k + '.glb introuvable'); next(); });
+        }
+        next();
+      }
+    })();
+
+    // ════════════════════════════════════════
     //  VOITURE JOUEUR
     //  Type : berline rouge, mesh box simple
     //  Structure : caisse + cabine + 4 roues
@@ -842,6 +922,39 @@
         }
       });
 
+      // ── Piétons PNJ ──
+      peds.forEach((ped, pi) => {
+        const px = ped.mesh.position.x, pz = ped.mesh.position.z;
+        // Proximité piéton–piéton : stop si < 1.5u
+        for (let j = 0; j < peds.length; j++) {
+          if (j === pi) continue;
+          const o = peds[j];
+          const dx = px - o.mesh.position.x, dz = pz - o.mesh.position.z;
+          if (dx*dx + dz*dz < 2.25) return; // 1.5² = 2.25
+        }
+        // Zone intersection : ralentit à 50%
+        const sf = (Math.abs(px) > 21 && Math.abs(px) < 35) ||
+                   (Math.abs(pz) > 21 && Math.abs(pz) < 35) ? 0.5 : 1.0;
+        // Position candidate
+        const newPos = ped.pos + ped.dir * ped.speed * sf * dt;
+        const nx = ped.track.walkAxis === 'x' ? newPos : px;
+        const nz = ped.track.walkAxis === 'x' ? pz     : newPos;
+        // Bord du monde : demi-tour
+        if (newPos > PED_BOUND || newPos < -PED_BOUND) {
+          ped.dir = -ped.dir; _pedSetRot(ped); return;
+        }
+        // Collision bâtiments : demi-tour
+        for (const b of buildingBounds) {
+          if (Math.abs(nx - b.x) < b.hw + 0.6 && Math.abs(nz - b.z) < b.hd + 0.6) {
+            ped.dir = -ped.dir; _pedSetRot(ped); return;
+          }
+        }
+        // Commit déplacement
+        ped.pos = newPos;
+        if (ped.track.walkAxis === 'x') ped.mesh.position.x = newPos;
+        else                             ped.mesh.position.z = newPos;
+      });
+
       // ── HUD vitesse (km/h) ──
       document.getElementById('speed-display').textContent =
         Math.abs(Math.round(carSpeed * 3.6));
@@ -851,6 +964,7 @@
       requestAnimationFrame(animate);
       const dt = Math.min(clock.getDelta(), 0.05);
       update(dt);
+      peds.forEach(p => p.mixer && p.mixer.update(dt)); // animation piétons
       renderer.render(scene, camera);
     }
     animate();
