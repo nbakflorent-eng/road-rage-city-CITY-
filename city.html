@@ -635,20 +635,24 @@
     _npcLoadNext(); // démarre le chargement GLB asynchrone
 
     // ════════════════════════════════════════
-    //  PIÉTONS PNJ — 18 personnages Kenney Blocky animés
+    //  PIÉTONS PNJ — 15 personnages Kenney Blocky animés
     // ════════════════════════════════════════
 
-    const PED_BASE  = 'https://nbakflorent-eng.github.io/road-rage-city-CITY-/';
-    const PED_CHARS = 'abcdefghijklmnopqr'.split('');
+    const PED_BASE   = 'https://nbakflorent-eng.github.io/road-rage-city-CITY-/';
+    const PED_MODELS = ['character-a','character-b','character-c','character-d',
+      'character-e','character-f','character-g','character-h','character-i',
+      'character-j','character-k','character-l','character-m','character-n',
+      'character-o','character-p','character-q','character-r'];
     // Trottoirs extérieurs (4 bandes)
     const PED_TRACKS = [
-      { fixedAxis:'z', fixedVal:-35.5, walkAxis:'x' },
-      { fixedAxis:'z', fixedVal: 35.5, walkAxis:'x' },
-      { fixedAxis:'x', fixedVal:-35.5, walkAxis:'z' },
-      { fixedAxis:'x', fixedVal: 35.5, walkAxis:'z' },
+      { fixedAxis:'z', fixedVal:-36, walkAxis:'x' },
+      { fixedAxis:'z', fixedVal: 36, walkAxis:'x' },
+      { fixedAxis:'x', fixedVal:-36, walkAxis:'z' },
+      { fixedAxis:'x', fixedVal: 36, walkAxis:'z' },
     ];
     const PED_BOUND = 115;
     const peds = [];
+    const _pedLoader = new THREE.GLTFLoader();
 
     function _pedSetRot(ped) {
       const d = ped.dir;
@@ -656,12 +660,11 @@
       else                             ped.mesh.rotation.y = d > 0 ? 0 : Math.PI;
     }
 
-    // Trouve les bones jambes gauche/droite pour oscillation JS
     function _findPedLegs(root) {
-      const legPat  = /(up.*leg|upleg|thigh|upperleg)/i;
-      const excl    = /(lower|foot|shin|calf|knee|toe)/i;
-      const leftPat = /(left|[._]l([._]|$))/i;
-      const rightPat= /(right|[._]r([._]|$))/i;
+      const legPat   = /(up.*leg|upleg|thigh|upperleg)/i;
+      const excl     = /(lower|foot|shin|calf|knee|toe)/i;
+      const leftPat  = /(left|[._]l([._]|$))/i;
+      const rightPat = /(right|[._]r([._]|$))/i;
       let legL = null, legR = null;
       root.traverse(obj => {
         const n = obj.name;
@@ -672,52 +675,32 @@
       return { legL, legR };
     }
 
-    function _placePed(charScene, track, pos) {
-      const mesh = typeof THREE.SkeletonUtils !== 'undefined'
-        ? THREE.SkeletonUtils.clone(charScene) : charScene.clone(true);
-      mesh.scale.set(1.5, 1.5, 1.5);
-      if (track.fixedAxis === 'z') mesh.position.set(pos, 0, track.fixedVal);
-      else                          mesh.position.set(track.fixedVal, 0, pos);
-      const box = new THREE.Box3().setFromObject(mesh);
-      mesh.position.y = -box.min.y;
-      mesh.traverse(ch => { if (ch.isMesh) ch.castShadow = true; });
-      const dir = rnd() < 0.5 ? 1 : -1;
-      scene.add(mesh);
-      const { legL, legR } = _findPedLegs(mesh);
-      const ped = { mesh, track, pos, dir, speed: 1.5 + rnd(),
-                    legL, legR, legPhase: Math.random() * Math.PI * 2 };
-      _pedSetRot(ped);
-      peds.push(ped);
-    }
-
-    function _spawnPeds(scenes) {
-      if (!scenes.length) { console.error('Aucun character GLB chargé — piétons absents'); return; }
-      const dist = [5, 5, 4, 4]; // total 18
-      let ci = 0;
+    // 15 piétons : 4+4+4+3, chacun charge son GLB indépendamment
+    (function _initPeds() {
+      const dist = [4, 4, 4, 3];
       PED_TRACKS.forEach((track, ti) => {
         const n = dist[ti];
         for (let i = 0; i < n; i++) {
           const pos = -PED_BOUND + (PED_BOUND * 2) / (n + 1) * (i + 1);
-          _placePed(scenes[ci % scenes.length], track, pos);
-          ci++;
+          const key = PED_MODELS[Math.floor(Math.random() * PED_MODELS.length)];
+          _pedLoader.load(PED_BASE + key + '.glb', gltf => {
+            const mesh = gltf.scene;
+            mesh.scale.set(1.5, 1.5, 1.5);
+            if (track.fixedAxis === 'z') mesh.position.set(pos, 0, track.fixedVal);
+            else                          mesh.position.set(track.fixedVal, 0, pos);
+            const box = new THREE.Box3().setFromObject(mesh);
+            mesh.position.y = -box.min.y;
+            mesh.traverse(ch => { if (ch.isMesh) ch.castShadow = true; });
+            const dir = rnd() < 0.5 ? 1 : -1;
+            scene.add(mesh);
+            const { legL, legR } = _findPedLegs(mesh);
+            const ped = { mesh, track, pos, dir, speed: 1.5 + rnd(),
+                          legL, legR, legPhase: Math.random() * Math.PI * 2 };
+            _pedSetRot(ped);
+            peds.push(ped);
+          }, null, err => console.error('Erreur chargement piéton:', key, err));
         }
       });
-    }
-
-    (function _initPeds() {
-      // Charge les 18 characters Kenney : character-a.glb à character-r.glb
-      const scenes = []; let idx = 0;
-      function next() {
-        if (idx >= PED_CHARS.length) { _spawnPeds(scenes); return; }
-        const k = PED_CHARS[idx++];
-        const url = PED_BASE + 'character-' + k + '.glb';
-        new THREE.GLTFLoader().load(url,
-          g  => { scenes.push(g.scene); next(); },
-          null,
-          e  => { console.warn('Piéton manquant:', url, e && e.message || ''); next(); }
-        );
-      }
-      next();
     })();
 
     // ════════════════════════════════════════
@@ -965,11 +948,11 @@
         if (ped.track.walkAxis === 'x') ped.mesh.position.x = newPos;
         else                             ped.mesh.position.z = newPos;
         // Oscillation jambes sinusoïdale sur les bones
-        if (ped.legL || ped.legR) {
-          ped.legPhase += dt * ped.speed * 3;
-          if (ped.legL) ped.legL.rotation.x =  Math.sin(ped.legPhase) * 0.45;
-          if (ped.legR) ped.legR.rotation.x = -Math.sin(ped.legPhase) * 0.45;
-        }
+        ped.legPhase += dt * ped.speed * 3;
+        if (ped.legL) ped.legL.rotation.x =  Math.sin(ped.legPhase) * 0.45;
+        if (ped.legR) ped.legR.rotation.x = -Math.sin(ped.legPhase) * 0.45;
+        // Balancement latéral du corps
+        ped.mesh.rotation.z = Math.sin(Date.now() * 0.005 + ped.legPhase) * 0.1;
       });
 
       // ── HUD vitesse (km/h) ──
