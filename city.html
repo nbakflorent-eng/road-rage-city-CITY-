@@ -652,7 +652,13 @@
     ];
     const PED_BOUND = 115;
     const peds = [];
-    const _pedLoader = new THREE.GLTFLoader();
+    const _pedTexMgr = new THREE.LoadingManager();
+    _pedTexMgr.setURLModifier(url => {
+      // Redirige Textures/texture-x.png → PED_BASE/texture-x.png
+      const m = url.match(/[Tt]extures\/([^/]+\.png)/);
+      return m ? PED_BASE + m[1] : url;
+    });
+    const _pedLoader = new THREE.GLTFLoader(_pedTexMgr);
 
     function _pedSetRot(ped) {
       const d = ped.dir;
