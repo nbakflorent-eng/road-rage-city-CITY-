@@ -649,12 +649,27 @@
     ];
     const PED_BOUND = 115;
     const peds = [];
-    let _walkClip = null;
 
     function _pedSetRot(ped) {
       const d = ped.dir;
       if (ped.track.walkAxis === 'x') ped.mesh.rotation.y = d > 0 ? -Math.PI/2 : Math.PI/2;
       else                             ped.mesh.rotation.y = d > 0 ? 0 : Math.PI;
+    }
+
+    // Trouve les bones jambes gauche/droite pour oscillation JS
+    function _findPedLegs(root) {
+      const legPat  = /(up.*leg|upleg|thigh|upperleg)/i;
+      const excl    = /(lower|foot|shin|calf|knee|toe)/i;
+      const leftPat = /(left|[._]l([._]|$))/i;
+      const rightPat= /(right|[._]r([._]|$))/i;
+      let legL = null, legR = null;
+      root.traverse(obj => {
+        const n = obj.name;
+        if (!legPat.test(n) || excl.test(n)) return;
+        if (!legL && leftPat.test(n))  legL = obj;
+        if (!legR && rightPat.test(n)) legR = obj;
+      });
+      return { legL, legR };
     }
 
     function _placePed(charScene, track, pos) {
@@ -667,85 +682,42 @@
       mesh.position.y = -box.min.y;
       mesh.traverse(ch => { if (ch.isMesh) ch.castShadow = true; });
       const dir = rnd() < 0.5 ? 1 : -1;
-      const mixer = new THREE.AnimationMixer(mesh);
-      if (_walkClip) mixer.clipAction(_walkClip).play();
       scene.add(mesh);
-      const ped = { mesh, mixer, track, pos, dir, speed: 1.5 + rnd() };
+      const { legL, legR } = _findPedLegs(mesh);
+      const ped = { mesh, track, pos, dir, speed: 1.5 + rnd(),
+                    legL, legR, legPhase: Math.random() * Math.PI * 2 };
       _pedSetRot(ped);
       peds.push(ped);
     }
 
-    // Couleurs variées pour les capsules piéton (fallback)
-    const _PED_COLORS = [0xe74c3c,0x3498db,0x2ecc71,0xf39c12,0x9b59b6,0x1abc9c,
-                         0xe67e22,0x27ae60,0x2980b9,0x8e44ad,0xf1c40f,0x16a085,
-                         0xd35400,0x7f8c8d,0xc0392b,0x34495e,0xe91e63,0x00bcd4];
-    function _makePedCapsule(color) {
-      const g = new THREE.Group();
-      const mat = new THREE.MeshLambertMaterial({ color });
-      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 1.0, 8), mat);
-      body.position.y = 1.0; g.add(body);
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.27, 8, 6), mat);
-      head.position.y = 1.8; g.add(head);
-      const pivL = new THREE.Group(); pivL.position.set(-0.14, 0.5, 0);
-      const cylL = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.6, 6), mat);
-      cylL.position.y = -0.3; pivL.add(cylL); g.add(pivL);
-      const pivR = new THREE.Group(); pivR.position.set(0.14, 0.5, 0);
-      const cylR = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.6, 6), mat);
-      cylR.position.y = -0.3; pivR.add(cylR); g.add(pivR);
-      g._pivL = pivL; g._pivR = pivR;
-      return g;
-    }
-    function _placePedCapsule(track, pos, ci) {
-      const mesh = _makePedCapsule(_PED_COLORS[ci % _PED_COLORS.length]);
-      mesh.scale.set(1.5, 1.5, 1.5);
-      if (track.fixedAxis === 'z') mesh.position.set(pos, 0, track.fixedVal);
-      else                          mesh.position.set(track.fixedVal, 0, pos);
-      const dir = rnd() < 0.5 ? 1 : -1;
-      scene.add(mesh);
-      const ped = { mesh, mixer: null, track, pos, dir, speed: 1.5 + rnd(), legPhase: Math.random() * Math.PI * 2 };
-      _pedSetRot(ped);
-      peds.push(ped);
-    }
     function _spawnPeds(scenes) {
+      if (!scenes.length) { console.error('Aucun character GLB chargé — piétons absents'); return; }
       const dist = [5, 5, 4, 4]; // total 18
       let ci = 0;
       PED_TRACKS.forEach((track, ti) => {
         const n = dist[ti];
         for (let i = 0; i < n; i++) {
           const pos = -PED_BOUND + (PED_BOUND * 2) / (n + 1) * (i + 1);
-          if (scenes.length > 0) {
-            _placePed(scenes[ci % scenes.length], track, pos);
-          } else {
-            _placePedCapsule(track, pos, ci); // fallback capsule visible immédiatement
-          }
+          _placePed(scenes[ci % scenes.length], track, pos);
           ci++;
         }
       });
     }
 
     (function _initPeds() {
-      // 1. Charge X Bot@Walking.glb → extraire clip "mixamo.com"
-      const xl = new THREE.GLTFLoader();
-      xl.load(PED_BASE + 'X Bot@Walking.glb', g => {
-        _walkClip = g.animations.find(a => a.name === 'mixamo.com') || g.animations[0] || null;
-        if (!_walkClip) console.warn('Clip marche introuvable dans X Bot@Walking.glb');
-        _loadPedChars();
-      }, null, () => { console.warn('X Bot@Walking.glb introuvable'); _loadPedChars(); });
-
-      // 2. Charge 15 characters aléatoires parmi a–r
-      function _loadPedChars() {
-        const keys = [...PED_CHARS].sort(() => rnd() - 0.5).slice(0, 15);
-        const scenes = []; let idx = 0;
-        function next() {
-          if (idx >= keys.length) { _spawnPeds(scenes); return; }
-          const k = keys[idx++];
-          const cl = new THREE.GLTFLoader();
-          cl.load(PED_BASE + 'character-' + k + '.glb', g => {
-            scenes.push(g.scene); next();
-          }, null, () => { console.warn('character-' + k + '.glb introuvable'); next(); });
-        }
-        next();
+      // Charge les 18 characters Kenney : character-a.glb à character-r.glb
+      const scenes = []; let idx = 0;
+      function next() {
+        if (idx >= PED_CHARS.length) { _spawnPeds(scenes); return; }
+        const k = PED_CHARS[idx++];
+        const url = PED_BASE + 'character-' + k + '.glb';
+        new THREE.GLTFLoader().load(url,
+          g  => { scenes.push(g.scene); next(); },
+          null,
+          e  => { console.warn('Piéton manquant:', url, e && e.message || ''); next(); }
+        );
       }
+      next();
     })();
 
     // ════════════════════════════════════════
@@ -992,11 +964,11 @@
         ped.pos = newPos;
         if (ped.track.walkAxis === 'x') ped.mesh.position.x = newPos;
         else                             ped.mesh.position.z = newPos;
-        // Oscillation jambes (capsule fallback)
-        if (ped.mesh._pivL) {
-          ped.legPhase = (ped.legPhase || 0) + dt * ped.speed * 2.5;
-          ped.mesh._pivL.rotation.x =  Math.sin(ped.legPhase) * 0.6;
-          ped.mesh._pivR.rotation.x = -Math.sin(ped.legPhase) * 0.6;
+        // Oscillation jambes sinusoïdale sur les bones
+        if (ped.legL || ped.legR) {
+          ped.legPhase += dt * ped.speed * 3;
+          if (ped.legL) ped.legL.rotation.x =  Math.sin(ped.legPhase) * 0.45;
+          if (ped.legR) ped.legR.rotation.x = -Math.sin(ped.legPhase) * 0.45;
         }
       });
 
@@ -1009,7 +981,6 @@
       requestAnimationFrame(animate);
       const dt = Math.min(clock.getDelta(), 0.05);
       update(dt);
-      peds.forEach(p => p.mixer && p.mixer.update(dt)); // animation piétons
       renderer.render(scene, camera);
     }
     animate();
