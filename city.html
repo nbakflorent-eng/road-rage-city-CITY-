@@ -645,10 +645,10 @@
       'character-o','character-p','character-q','character-r'];
     // Trottoirs extérieurs (4 bandes)
     const PED_TRACKS = [
-      { fixedAxis:'z', fixedVal:-36, walkAxis:'x' },
-      { fixedAxis:'z', fixedVal: 36, walkAxis:'x' },
-      { fixedAxis:'x', fixedVal:-36, walkAxis:'z' },
-      { fixedAxis:'x', fixedVal: 36, walkAxis:'z' },
+      { fixedAxis:'z', fixedVal:-35.8, walkAxis:'x' },
+      { fixedAxis:'z', fixedVal: 35.8, walkAxis:'x' },
+      { fixedAxis:'x', fixedVal:-35.8, walkAxis:'z' },
+      { fixedAxis:'x', fixedVal: 35.8, walkAxis:'z' },
     ];
     const PED_BOUND = 115;
     const peds = [];
@@ -662,7 +662,7 @@
 
     function _pedSetRot(ped) {
       const d = ped.dir;
-      if (ped.track.walkAxis === 'x') ped.mesh.rotation.y = d > 0 ? -Math.PI/2 : Math.PI/2;
+      if (ped.track.walkAxis === 'x') ped.mesh.rotation.y = d > 0 ? Math.PI/2 : -Math.PI/2;
       else                             ped.mesh.rotation.y = d > 0 ? 0 : Math.PI;
     }
 
@@ -691,7 +691,7 @@
           const key = PED_MODELS[Math.floor(Math.random() * PED_MODELS.length)];
           _pedLoader.load(PED_BASE + key + '.glb', gltf => {
             const mesh = gltf.scene;
-            mesh.scale.set(1.5, 1.5, 1.5);
+            mesh.scale.set(0.8, 0.8, 0.8);
             if (track.fixedAxis === 'z') mesh.position.set(pos, 0, track.fixedVal);
             else                          mesh.position.set(track.fixedVal, 0, pos);
             const box = new THREE.Box3().setFromObject(mesh);
