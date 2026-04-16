@@ -603,10 +603,10 @@
       const route = NPC_ROUTES[Math.floor(rnd() * 4)];
       const dir   = rnd() < 0.5 ? 1 : -1;
       const t     = (rnd() * 2 - 1) * NPC_BOUND;
-      const speed = 6 + rnd() * 10; // 6–16 u/s
+      const speed = 6 + rnd() * 8;  // 6–14 u/s
       if (route.axis === 'x') {
         mesh.position.set(t, 0, route.fixed + dir * 3);
-        mesh.rotation.y = dir > 0 ? -Math.PI / 2 : Math.PI / 2;
+        mesh.rotation.y = dir > 0 ?  Math.PI / 2 : -Math.PI / 2; // +x → face est, -x → face ouest
       } else {
         mesh.position.set(route.fixed - dir * 3, 0, t);
         mesh.rotation.y = dir > 0 ? 0 : Math.PI;
@@ -675,15 +675,49 @@
       peds.push(ped);
     }
 
+    // Couleurs variées pour les capsules piéton (fallback)
+    const _PED_COLORS = [0xe74c3c,0x3498db,0x2ecc71,0xf39c12,0x9b59b6,0x1abc9c,
+                         0xe67e22,0x27ae60,0x2980b9,0x8e44ad,0xf1c40f,0x16a085,
+                         0xd35400,0x7f8c8d,0xc0392b,0x34495e,0xe91e63,0x00bcd4];
+    function _makePedCapsule(color) {
+      const g = new THREE.Group();
+      const mat = new THREE.MeshLambertMaterial({ color });
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 1.0, 8), mat);
+      body.position.y = 1.0; g.add(body);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.27, 8, 6), mat);
+      head.position.y = 1.8; g.add(head);
+      const pivL = new THREE.Group(); pivL.position.set(-0.14, 0.5, 0);
+      const cylL = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.6, 6), mat);
+      cylL.position.y = -0.3; pivL.add(cylL); g.add(pivL);
+      const pivR = new THREE.Group(); pivR.position.set(0.14, 0.5, 0);
+      const cylR = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.6, 6), mat);
+      cylR.position.y = -0.3; pivR.add(cylR); g.add(pivR);
+      g._pivL = pivL; g._pivR = pivR;
+      return g;
+    }
+    function _placePedCapsule(track, pos, ci) {
+      const mesh = _makePedCapsule(_PED_COLORS[ci % _PED_COLORS.length]);
+      mesh.scale.set(1.5, 1.5, 1.5);
+      if (track.fixedAxis === 'z') mesh.position.set(pos, 0, track.fixedVal);
+      else                          mesh.position.set(track.fixedVal, 0, pos);
+      const dir = rnd() < 0.5 ? 1 : -1;
+      scene.add(mesh);
+      const ped = { mesh, mixer: null, track, pos, dir, speed: 1.5 + rnd(), legPhase: Math.random() * Math.PI * 2 };
+      _pedSetRot(ped);
+      peds.push(ped);
+    }
     function _spawnPeds(scenes) {
-      if (!scenes.length) { console.warn('Aucun character GLB chargé — piétons absents'); return; }
       const dist = [5, 5, 4, 4]; // total 18
       let ci = 0;
       PED_TRACKS.forEach((track, ti) => {
         const n = dist[ti];
         for (let i = 0; i < n; i++) {
           const pos = -PED_BOUND + (PED_BOUND * 2) / (n + 1) * (i + 1);
-          _placePed(scenes[ci % scenes.length], track, pos);
+          if (scenes.length > 0) {
+            _placePed(scenes[ci % scenes.length], track, pos);
+          } else {
+            _placePedCapsule(track, pos, ci); // fallback capsule visible immédiatement
+          }
           ci++;
         }
       });
@@ -866,7 +900,7 @@
       playerCar.position.z = Math.max(-BOUND, Math.min(BOUND, playerCar.position.z));
 
       // ── Collision bâtiments (AABB) — annule le déplacement si collision ──
-      const _CAR_R = 2.2;
+      const _CAR_R = 0.5;
       for (const b of buildingBounds) {
         const ox = playerCar.position.x - b.x;
         const oz = playerCar.position.z - b.z;
@@ -894,23 +928,28 @@
 
       // ── PNJ ──
       npcCars.forEach((npc, idx) => {
-        // Collision PNJ–PNJ : freine si un autre PNJ est à moins de 5u
+        // Distance de sécurité 6u entre voitures
+        let carBlocked = false;
         for (let j = 0; j < npcCars.length; j++) {
           if (j === idx) continue;
           const o = npcCars[j];
           const dx = npc.mesh.position.x - o.mesh.position.x;
           const dz = npc.mesh.position.z - o.mesh.position.z;
-          if (dx*dx + dz*dz < 25) return; // distance² < 5²
+          if (dx*dx + dz*dz < 36) { carBlocked = true; break; } // distance² < 6²
         }
-        // Position candidate
+        if (carBlocked) {
+          npc.blockedTime = (npc.blockedTime || 0) + dt;
+          if (npc.blockedTime >= 3) { // téléport après 3s de blocage
+            npc.t = (rnd() * 2 - 1) * NPC_BOUND;
+            npc.blockedTime = 0;
+            if (npc.route.axis === 'x') npc.mesh.position.set(npc.t, 0, npc.route.fixed + npc.dir * 3);
+            else                         npc.mesh.position.set(npc.route.fixed - npc.dir * 3, 0, npc.t);
+          }
+          return;
+        }
+        npc.blockedTime = 0;
+        // Position candidate (vitesse fixe 6-14 u/s, direction fixe)
         const newT = npc.t + npc.dir * npc.speed * dt;
-        const nx = npc.route.axis === 'x' ? newT : npc.mesh.position.x;
-        const nz = npc.route.axis === 'x' ? npc.mesh.position.z : newT;
-        // Collision PNJ–bâtiments : s'arrête si AABB hit
-        const _NR = 2.0;
-        for (const b of buildingBounds) {
-          if (Math.abs(nx - b.x) < b.hw + _NR && Math.abs(nz - b.z) < b.hd + _NR) return;
-        }
         // Déplacement validé + rebouclage
         npc.t = newT;
         if (npc.t >  NPC_BOUND) npc.t -= NPC_BOUND * 2;
@@ -953,6 +992,12 @@
         ped.pos = newPos;
         if (ped.track.walkAxis === 'x') ped.mesh.position.x = newPos;
         else                             ped.mesh.position.z = newPos;
+        // Oscillation jambes (capsule fallback)
+        if (ped.mesh._pivL) {
+          ped.legPhase = (ped.legPhase || 0) + dt * ped.speed * 2.5;
+          ped.mesh._pivL.rotation.x =  Math.sin(ped.legPhase) * 0.6;
+          ped.mesh._pivR.rotation.x = -Math.sin(ped.legPhase) * 0.6;
+        }
       });
 
       // ── HUD vitesse (km/h) ──
