@@ -87,6 +87,7 @@
     const RD_W     = 13;    // largeur route
     const SW_W     = 2.8;   // largeur trottoir
     const RD_POS   = [-90, -30, 30, 90]; // positions des axes (4H + 4V)
+    const NPC_BASE = 'https://nbakflorent-eng.github.io/road-rage-city-CITY-/';
 
     // ════════════════════════════════════════
     //  MATÉRIAUX
@@ -593,7 +594,6 @@
     // ════════════════════════════════════════
 
     // ── GLTFLoader — URL absolue + résolution texture depuis racine du repo ──
-    const NPC_BASE = 'https://nbakflorent-eng.github.io/road-rage-city-CITY-/';
     function _loadGLB(key, cb) {
       const manager = new THREE.LoadingManager();
       // Redirige toutes les ressources (y compris Textures/colormap.png) vers la racine
