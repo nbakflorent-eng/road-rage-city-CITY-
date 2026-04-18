@@ -342,50 +342,6 @@
       });
     });
 
-    const _BLDG_GLB_DEFS = [
-      { key:'building_06.glb',        scale:0.005 },
-      { key:'new_york_buildings.glb', scale:0.003 },
-      { key:'bat simple.glb',         scale:0.005 },
-    ];
-    // 3 buckets selon tirage : 0-0.40 proc, 0.40-0.60 building_06, 0.60-0.80 new_york, 0.80-1.0 bat simple
-    // Positions fixes sûres (centre de blocs, jamais sur une route)
-    const _glbBldgQ = [
-      { x: -40, z: -40, bucket: 0 },
-      { x:  40, z: -40, bucket: 1 },
-      { x: -40, z:  40, bucket: 2 },
-    ];
-
-    // Chargement asynchrone des bâtiments GLB
-    (function _initGLBBuildings() {
-      const tmpls = [null, null, null]; let bi = 0;
-      function next() {
-        if (bi >= _BLDG_GLB_DEFS.length) {
-          _glbBldgQ.forEach(({ x, z, bucket }) => {
-            if (RD_POS.some(r => Math.abs(x - r) < 8 || Math.abs(z - r) < 8)) return;
-            const entry = tmpls[bucket];
-            if (!entry) return;
-            const m = entry.tmpl.clone(true);
-            const sc = entry.scale;
-            m.scale.set(sc, sc, sc);
-            m.position.set(x, 0, z);
-            m.rotation.y = Math.random() * Math.PI * 2;
-            const box = new THREE.Box3().setFromObject(m);
-            m.position.y = -box.min.y;
-            m.traverse(ch => { if (ch.isMesh) ch.material.side = THREE.FrontSide; });
-            scene.add(m);
-            buildingBounds.push({ x, z,
-              hw: (box.max.x - box.min.x) / 2 + 0.4,
-              hd: (box.max.z - box.min.z) / 2 + 0.4 });
-          });
-          return;
-        }
-        const idx = bi;
-        const def = _BLDG_GLB_DEFS[bi++];
-        _loadGLB(def.key, g => { if (g) tmpls[idx] = { tmpl: g, scale: def.scale }; next(); });
-      }
-      next();
-    })();
-
     // ════════════════════════════════════════
     //  ARBRES GLB (alignés sur les trottoirs)
     // ════════════════════════════════════════
