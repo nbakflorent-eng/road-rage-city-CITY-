@@ -83,10 +83,10 @@
     // ════════════════════════════════════════
     //  CONSTANTES WORLD
     // ════════════════════════════════════════
-    const WORLD    = 350;   // taille totale du sol
+    const WORLD    = 400;   // taille totale du sol
     const RD_W     = 13;    // largeur route
     const SW_W     = 2.8;   // largeur trottoir
-    const RD_POS   = [-28, 28]; // positions des axes (2H + 2V)
+    const RD_POS   = [-60, -20, 20, 60]; // positions des axes (4H + 4V)
     const NPC_BASE = 'https://nbakflorent-eng.github.io/road-rage-city-CITY-/';
 
     // ════════════════════════════════════════
@@ -344,10 +344,12 @@
     });
 
     const _BLDG_GLB_DEFS = [
-      { key:'building_06.glb',        scale:0.8 },
-      { key:'new_york_buildings.glb', scale:0.5 },
+      { key:'building_06.glb',        scale:0.008 },
+      { key:'new_york_buildings.glb', scale:0.005 },
+      { key:'bat simple.glb',         scale:0.01  },
     ];
-    const _glbBldgQ = []; // positions pour bâtiments GLB
+    // 3 buckets selon tirage : 0-0.40 proc, 0.40-0.60 building_06, 0.60-0.80 new_york, 0.80-1.0 bat simple
+    const _glbBldgQ = []; // { x, z, bucket:0|1|2 }
 
     BLDG_ZONES.forEach(({ x1, x2, z1, z2, type, step }) => {
       for (let bx = x1 + step * 0.5; bx < x2 - step * 0.1; bx += step) {
@@ -355,10 +357,14 @@
           const fx = bx + rr(-step * 0.18, step * 0.18);
           const fz = bz + rr(-step * 0.18, step * 0.18);
           const r  = Math.random();
-          if (r < 0.34) {
-            makeBuilding(fx, fz, type);          // ~33% procédural
+          if (r < 0.40) {
+            makeBuilding(fx, fz, type);                      // 40% procédural
+          } else if (r < 0.60) {
+            _glbBldgQ.push({ x: fx, z: fz, bucket: 0 });   // 20% building_06
+          } else if (r < 0.80) {
+            _glbBldgQ.push({ x: fx, z: fz, bucket: 1 });   // 20% new_york
           } else {
-            _glbBldgQ.push({ x: fx, z: fz });   // ~67% → building_06 ou new_york
+            _glbBldgQ.push({ x: fx, z: fz, bucket: 2 });   // 20% bat simple
           }
         }
       }
@@ -366,14 +372,15 @@
 
     // Chargement asynchrone des bâtiments GLB
     (function _initGLBBuildings() {
-      const tmpls = []; let bi = 0;
+      const tmpls = [null, null, null]; let bi = 0;
       function next() {
         if (bi >= _BLDG_GLB_DEFS.length) {
-          if (!tmpls.length) return;
-          _glbBldgQ.forEach(({ x, z }) => {
-            const def = tmpls[Math.floor(Math.random() * tmpls.length)];
-            const m = def.tmpl.clone(true);
-            m.scale.set(def.scale, def.scale, def.scale);
+          _glbBldgQ.forEach(({ x, z, bucket }) => {
+            const entry = tmpls[bucket];
+            if (!entry) return; // GLB absent → skip
+            const m = entry.tmpl.clone(true);
+            const sc = entry.scale;
+            m.scale.set(sc, sc, sc);
             m.position.set(x, 0, z);
             m.rotation.y = Math.random() * Math.PI * 2;
             const box = new THREE.Box3().setFromObject(m);
@@ -386,8 +393,9 @@
           });
           return;
         }
+        const idx = bi;
         const def = _BLDG_GLB_DEFS[bi++];
-        _loadGLB(def.key, g => { if (g) tmpls.push({ tmpl: g, scale: def.scale }); next(); });
+        _loadGLB(def.key, g => { if (g) tmpls[idx] = { tmpl: g, scale: def.scale }; next(); });
       }
       next();
     })();
@@ -490,7 +498,7 @@
     // ════════════════════════════════════════
     //  BORNES INCENDIE GLB
     // ════════════════════════════════════════
-    const HYDRANT_STP = 40;
+    const HYDRANT_STP = 45;
     const _hydrantPosQ = [];
     RD_POS.forEach(rz => {
       [-1, 1].forEach(side => {
@@ -518,6 +526,7 @@
         const box = new THREE.Box3().setFromObject(m);
         m.position.y = -box.min.y;
         scene.add(m);
+        console.log('Hydrant placé:', hx, hz);
       });
     });
 
@@ -529,7 +538,11 @@
     // ════════════════════════════════════════
 
     const _TL_POS = [];
-    RD_POS.forEach(rx => RD_POS.forEach(rz => _TL_POS.push({ x: rx, z: rz })));
+    RD_POS.forEach(rx => RD_POS.forEach(rz => {
+      [[-1,-1],[-1,1],[1,-1],[1,1]].forEach(([sx, sz]) => {
+        _TL_POS.push({ x: rx + sx * (RD_W / 2 + SW_W + 1), z: rz + sz * (RD_W / 2 + SW_W + 1) });
+      });
+    }));
     const _TL_DUR    = { red:5.0, green:5.0, orange:1.0 };
     const _TL_NEXT   = { red:'green', green:'orange', orange:'red' };
 
@@ -564,8 +577,7 @@
       _TL_POS.forEach(({ x, z }, idx) => {
         const clone = tmpl.clone(true);
         clone.scale.set(0.5, 0.5, 0.5);
-        const sx = Math.sign(x) || 1, sz = Math.sign(z) || 1;
-        clone.position.set(x + sx * (RD_W / 2 + SW_W + 1), 0, z + sz * (RD_W / 2 + SW_W + 1));
+        clone.position.set(x, 0, z);
         const box = new THREE.Box3().setFromObject(clone);
         clone.position.y = -box.min.y;
         clone.traverse(ch => { if (ch.isMesh) ch.castShadow = true; });
@@ -604,11 +616,12 @@
       loader.load(NPC_BASE + key, g => cb(g.scene), null, () => { console.warn('GLB manquant:', key); cb(null); });
     }
 
-    // Normalise : scale=1.5, grounded y=0, ombres
-    function _normalizeKenney(model) {
+    // Normalise : scale=1.5 (ou 0.008 pour police_car), grounded y=0, ombres
+    function _normalizeKenney(model, key) {
       model.position.set(0, 0, 0);
       model.rotation.set(0, 0, 0);
-      model.scale.set(1.5, 1.5, 1.5);
+      const s = key === 'police_car' ? 0.008 : 1.5;
+      model.scale.set(s, s, s);
       const box = new THREE.Box3().setFromObject(model);
       model.position.y = -box.min.y;
       model.traverse(ch => {
@@ -678,7 +691,7 @@
       if (_npcLoadIdx >= KENNEY_DEFS.length) { _npcSpawnAll(); return; }
       const def = KENNEY_DEFS[_npcLoadIdx++];
       _loadGLB(def.key + '.glb', m => {
-        if (m) { _normalizeKenney(m); _npcTmpl[def.key] = m; }
+        if (m) { _normalizeKenney(m, def.key); _npcTmpl[def.key] = m; }
         _npcLoadNext();
       });
     }
@@ -693,19 +706,15 @@
       'character-e','character-f','character-g','character-h','character-i',
       'character-j','character-k','character-l','character-m','character-n',
       'character-o','character-p','character-q','character-r'];
-    // Trottoirs des 2 routes (±28) — 8 bandes
+    // Trottoirs des 4 routes (±20, ±60) — 16 bandes
     const _SM = RD_W / 2 + SW_W / 2; // 7.9 = centre trottoir depuis axe route
-    const PED_TRACKS = [
-      { fixedAxis:'z', fixedVal:-28 - _SM, walkAxis:'x' },
-      { fixedAxis:'z', fixedVal:-28 + _SM, walkAxis:'x' },
-      { fixedAxis:'z', fixedVal: 28 - _SM, walkAxis:'x' },
-      { fixedAxis:'z', fixedVal: 28 + _SM, walkAxis:'x' },
-      { fixedAxis:'x', fixedVal:-28 - _SM, walkAxis:'z' },
-      { fixedAxis:'x', fixedVal:-28 + _SM, walkAxis:'z' },
-      { fixedAxis:'x', fixedVal: 28 - _SM, walkAxis:'z' },
-      { fixedAxis:'x', fixedVal: 28 + _SM, walkAxis:'z' },
-    ];
-    const PED_BOUND = 170;
+    const PED_TRACKS = RD_POS.flatMap(r => [
+      { fixedAxis:'z', fixedVal: r - _SM, walkAxis:'x' },
+      { fixedAxis:'z', fixedVal: r + _SM, walkAxis:'x' },
+      { fixedAxis:'x', fixedVal: r - _SM, walkAxis:'z' },
+      { fixedAxis:'x', fixedVal: r + _SM, walkAxis:'z' },
+    ]);
+    const PED_BOUND = 195;
     const peds = [];
     const _pedTexMgr = new THREE.LoadingManager();
     _pedTexMgr.setURLModifier(url => {
@@ -842,7 +851,7 @@
       playerCar.add(wg);
     });
 
-    playerCar.position.set(-50, 0, -28); // route z=-28, lane droite, face est
+    playerCar.position.set(-80, 0, -20); // route z=-20, lane droite, face est
     scene.add(playerCar);
 
     // ════════════════════════════════════════
@@ -973,8 +982,10 @@
         if (npc.t < -NPC_BOUND) npc.t += NPC_BOUND * 2;
         if (npc.route.axis === 'x') {
           npc.mesh.position.x = npc.t;
+          npc.mesh.position.z = npc.route.fixed + npc.dir * 3;
         } else {
           npc.mesh.position.z = npc.t;
+          npc.mesh.position.x = npc.route.fixed - npc.dir * 3;
         }
       });
 
