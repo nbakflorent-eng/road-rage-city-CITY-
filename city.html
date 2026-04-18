@@ -55,11 +55,10 @@
       60, window.innerWidth / window.innerHeight, 0.1, 500
     );
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(window.devicePixelRatio);
+    const renderer = new THREE.WebGLRenderer({ antialias: false });
+    renderer.setPixelRatio(1);
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.BasicShadowMap;
+    renderer.shadowMap.enabled = false;
     document.body.appendChild(renderer.domElement);
 
     // ════════════════════════════════════════
@@ -344,9 +343,9 @@
     });
 
     const _BLDG_GLB_DEFS = [
-      { key:'building_06.glb',        scale:0.008 },
-      { key:'new_york_buildings.glb', scale:0.005 },
-      { key:'bat simple.glb',         scale:0.01  },
+      { key:'building_06.glb',        scale:0.005 },
+      { key:'new_york_buildings.glb', scale:0.003 },
+      { key:'bat simple.glb',         scale:0.005 },
     ];
     // 3 buckets selon tirage : 0-0.40 proc, 0.40-0.60 building_06, 0.60-0.80 new_york, 0.80-1.0 bat simple
     const _glbBldgQ = []; // { x, z, bucket:0|1|2 }
@@ -376,8 +375,9 @@
       function next() {
         if (bi >= _BLDG_GLB_DEFS.length) {
           _glbBldgQ.forEach(({ x, z, bucket }) => {
+            if (RD_POS.some(r => Math.abs(x - r) < 8 || Math.abs(z - r) < 8)) return;
             const entry = tmpls[bucket];
-            if (!entry) return; // GLB absent → skip
+            if (!entry) return;
             const m = entry.tmpl.clone(true);
             const sc = entry.scale;
             m.scale.set(sc, sc, sc);
@@ -385,7 +385,7 @@
             m.rotation.y = Math.random() * Math.PI * 2;
             const box = new THREE.Box3().setFromObject(m);
             m.position.y = -box.min.y;
-            m.traverse(ch => { if (ch.isMesh) { ch.castShadow = true; ch.receiveShadow = true; } });
+            m.traverse(ch => { if (ch.isMesh) ch.material.side = THREE.FrontSide; });
             scene.add(m);
             buildingBounds.push({ x, z,
               hw: (box.max.x - box.min.x) / 2 + 0.4,
@@ -528,7 +528,7 @@
       console.log('Hydrant TEST placé à (0,0,-20)');
       _hydrantPosQ.forEach(([hx, hz]) => {
         const m = tmpl.clone(true);
-        m.scale.set(0.5, 0.5, 0.5);
+        m.scale.set(2.0, 2.0, 2.0);
         m.position.set(hx, 0, hz);
         const box = new THREE.Box3().setFromObject(m);
         m.position.y = -box.min.y;
@@ -594,7 +594,7 @@
         clone.position.set(x, 0, z);
         const box = new THREE.Box3().setFromObject(clone);
         clone.position.y = -box.min.y;
-        clone.traverse(ch => { if (ch.isMesh) ch.castShadow = true; });
+        clone.traverse(ch => { if (ch.isMesh) ch.receiveShadow = false; });
         scene.add(clone);
         // Identification des lumières par couleur de matériau
         const lightMeshes = [[], [], []];
@@ -638,11 +638,6 @@
       model.scale.set(s, s, s);
       const box = new THREE.Box3().setFromObject(model);
       model.position.y = -box.min.y;
-      model.traverse(ch => {
-        if (!ch.isMesh) return;
-        ch.castShadow = true;
-        ch.receiveShadow = true;
-      });
     }
 
     // ── Tableau pondéré — pool total 27 slots ──
@@ -695,7 +690,7 @@
     function _npcSpawnAll() {
       const pool = _buildWeightedPool(KENNEY_DEFS, _npcTmpl);
       if (!pool.length) { console.warn('Aucun GLB chargé — PNJ absents'); return; }
-      for (let i = 0; i < 12; i++) {
+      for (let i = 0; i < 8; i++) {
         const def = pool[Math.floor(rnd() * pool.length)];
         _npcPlaceModel(_npcTmpl[def.key]);
       }
@@ -759,9 +754,9 @@
       return { legL, legR };
     }
 
-    // 15 piétons : 4+4+4+3, chacun charge son GLB indépendamment
+    // 15 piétons sur 16 trottoirs, 1 par trottoir
     (function _initPeds() {
-      const dist = [7, 6, 6, 6, 6, 6, 6, 7]; // 50 piétons sur 8 trottoirs
+      const dist = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0]; // 15 piétons sur 16 trottoirs
       PED_TRACKS.forEach((track, ti) => {
         const n = dist[ti];
         for (let i = 0; i < n; i++) {
@@ -982,8 +977,8 @@
           if (npc.blockedTime >= 3) { // téléport après 3s de blocage
             npc.t = (rnd() * 2 - 1) * NPC_BOUND;
             npc.blockedTime = 0;
-            if (npc.route.axis === 'x') npc.mesh.position.set(npc.t, 0, npc.route.fixed + npc.dir * 3);
-            else                         npc.mesh.position.set(npc.route.fixed - npc.dir * 3, 0, npc.t);
+            if (npc.route.axis === 'x') npc.mesh.position.set(npc.t, 0, npc.route.fixed);
+            else                         npc.mesh.position.set(npc.route.fixed, 0, npc.t);
           }
           return;
         }
@@ -996,10 +991,10 @@
         if (npc.t < -NPC_BOUND) npc.t += NPC_BOUND * 2;
         if (npc.route.axis === 'x') {
           npc.mesh.position.x = npc.t;
-          npc.mesh.position.z = npc.route.fixed + npc.dir * 3;
+          npc.mesh.position.z = npc.route.fixed;
         } else {
           npc.mesh.position.z = npc.t;
-          npc.mesh.position.x = npc.route.fixed - npc.dir * 3;
+          npc.mesh.position.x = npc.route.fixed;
         }
       });
 
