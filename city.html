@@ -59,7 +59,7 @@
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.BasicShadowMap;
     document.body.appendChild(renderer.domElement);
 
     // ════════════════════════════════════════
@@ -68,13 +68,13 @@
     const sunLight = new THREE.DirectionalLight(0xfff8e7, 1.3);
     sunLight.position.set(60, 100, 40);
     sunLight.castShadow = true;
-    sunLight.shadow.mapSize.set(2048, 2048);
+    sunLight.shadow.mapSize.set(512, 512);
     sunLight.shadow.camera.near   = 1;
-    sunLight.shadow.camera.far    = 350;
-    sunLight.shadow.camera.left   = -120;
-    sunLight.shadow.camera.right  =  120;
-    sunLight.shadow.camera.top    =  120;
-    sunLight.shadow.camera.bottom = -120;
+    sunLight.shadow.camera.far    = 300;
+    sunLight.shadow.camera.left   = -80;
+    sunLight.shadow.camera.right  =  80;
+    sunLight.shadow.camera.top    =  80;
+    sunLight.shadow.camera.bottom = -80;
     scene.add(sunLight);
 
     const ambientLight = new THREE.AmbientLight(0x8899bb, 0.65);
@@ -83,10 +83,10 @@
     // ════════════════════════════════════════
     //  CONSTANTES WORLD
     // ════════════════════════════════════════
-    const WORLD    = 500;   // taille totale du sol
+    const WORLD    = 350;   // taille totale du sol
     const RD_W     = 13;    // largeur route
     const SW_W     = 2.8;   // largeur trottoir
-    const RD_POS   = [-90, -30, 30, 90]; // positions des axes (4H + 4V)
+    const RD_POS   = [-28, 28]; // positions des axes (2H + 2V)
     const NPC_BASE = 'https://nbakflorent-eng.github.io/road-rage-city-CITY-/';
 
     // ════════════════════════════════════════
@@ -344,21 +344,21 @@
     });
 
     const _BLDG_GLB_DEFS = [
-      { key:'bat simple.glb',         scale:1.0 },
       { key:'building_06.glb',        scale:0.8 },
       { key:'new_york_buildings.glb', scale:0.5 },
     ];
-    const _glbBldgQ = []; // positions pour bâtiments GLB (50%)
+    const _glbBldgQ = []; // positions pour bâtiments GLB
 
     BLDG_ZONES.forEach(({ x1, x2, z1, z2, type, step }) => {
       for (let bx = x1 + step * 0.5; bx < x2 - step * 0.1; bx += step) {
         for (let bz = z1 + step * 0.5; bz < z2 - step * 0.1; bz += step) {
           const fx = bx + rr(-step * 0.18, step * 0.18);
           const fz = bz + rr(-step * 0.18, step * 0.18);
-          if (Math.random() < 0.5) {
-            makeBuilding(fx, fz, type);
+          const r  = Math.random();
+          if (r < 0.34) {
+            makeBuilding(fx, fz, type);          // ~33% procédural
           } else {
-            _glbBldgQ.push({ x: fx, z: fz });
+            _glbBldgQ.push({ x: fx, z: fz });   // ~67% → building_06 ou new_york
           }
         }
       }
@@ -396,7 +396,7 @@
     //  ARBRES GLB (alignés sur les trottoirs)
     // ════════════════════════════════════════
     const SW_MID   = RD_W / 2 + SW_W / 2; // 7.9 = centre trottoir depuis axe route
-    const TREE_STP = 25; // espacement augmenté pour WORLD=500
+    const TREE_STP = 50; // espacement doublé pour réduire le nombre d'arbres
     const _TREE_DEFS = [
       { key:'arbre_low_poly.glb',            scale:2.0 },
       { key:'pine_trees_pack__ps1_low_poly.glb', scale:1.5 },
@@ -421,27 +421,31 @@
     });
 
     (function _initTrees() {
-      const tmpls = []; let ti = 0;
-      function next() {
-        if (ti >= _TREE_DEFS.length) {
-          if (!tmpls.length) return;
-          _treePosQ.forEach(([tx, tz]) => {
-            const def = tmpls[Math.floor(Math.random() * tmpls.length)];
-            const m = def.tmpl.clone(true);
-            m.scale.set(def.scale, def.scale, def.scale);
-            m.position.set(tx, 0, tz);
-            m.rotation.y = Math.random() * Math.PI * 2;
-            const box = new THREE.Box3().setFromObject(m);
-            m.position.y = -box.min.y;
-            m.traverse(ch => { if (ch.isMesh) ch.castShadow = true; });
-            scene.add(m);
-          });
-          return;
-        }
-        const d = _TREE_DEFS[ti++];
-        _loadGLB(d.key, g => { if (g) tmpls.push({ tmpl: g, scale: d.scale }); next(); });
+      let arbreTmpl = null, pineTmpl = null;
+      function place() {
+        _treePosQ.forEach(([tx, tz]) => {
+          const usePine = pineTmpl && Math.random() < 0.5;
+          let m;
+          if (usePine) {
+            const kids = pineTmpl.children.filter(c => c.isMesh || c.isGroup || c.children.length);
+            const src  = kids.length ? kids[Math.floor(Math.random() * kids.length)] : pineTmpl;
+            m = src.clone(true);
+            m.scale.set(1.5, 1.5, 1.5);
+          } else if (arbreTmpl) {
+            m = arbreTmpl.clone(true);
+            m.scale.set(2.0, 2.0, 2.0);
+          } else return;
+          m.position.set(tx, 0, tz);
+          m.rotation.y = Math.random() * Math.PI * 2;
+          const box = new THREE.Box3().setFromObject(m);
+          m.position.y = -box.min.y;
+          scene.add(m);
+        });
       }
-      next();
+      let loaded = 0;
+      const done = () => { if (++loaded === 2) place(); };
+      _loadGLB('arbre_low_poly.glb',                g => { if (g) arbreTmpl = g; done(); });
+      _loadGLB('pine_trees_pack__ps1_low_poly.glb',  g => { if (g) pineTmpl  = g; done(); });
     })();
 
     // ════════════════════════════════════════
@@ -479,7 +483,6 @@
         m.position.set(lx, 0, lz);
         const box = new THREE.Box3().setFromObject(m);
         m.position.y = -box.min.y;
-        m.traverse(ch => { if (ch.isMesh) ch.castShadow = true; });
         scene.add(m);
       });
     });
@@ -514,7 +517,6 @@
         m.position.set(hx, 0, hz);
         const box = new THREE.Box3().setFromObject(m);
         m.position.y = -box.min.y;
-        m.traverse(ch => { if (ch.isMesh) ch.castShadow = true; });
         scene.add(m);
       });
     });
@@ -630,7 +632,7 @@
       { key:'police',           freq:1 },
       { key:'ambulance',        freq:1 },
       { key:'firetruck',        freq:1 },
-      { key:'police_car',       freq:1 },
+      { key:'police_car',       freq:2 },
     ];
     const NPC_ROUTES = RD_POS.flatMap(r => [{ axis:'x', fixed:r }, { axis:'z', fixed:r }]);
     const NPC_BOUND = WORLD / 2 - 3;
@@ -691,19 +693,19 @@
       'character-e','character-f','character-g','character-h','character-i',
       'character-j','character-k','character-l','character-m','character-n',
       'character-o','character-p','character-q','character-r'];
-    // Trottoirs des 2 routes intérieures (±30) — 8 bandes
+    // Trottoirs des 2 routes (±28) — 8 bandes
     const _SM = RD_W / 2 + SW_W / 2; // 7.9 = centre trottoir depuis axe route
     const PED_TRACKS = [
-      { fixedAxis:'z', fixedVal:-30 - _SM, walkAxis:'x' },
-      { fixedAxis:'z', fixedVal:-30 + _SM, walkAxis:'x' },
-      { fixedAxis:'z', fixedVal: 30 - _SM, walkAxis:'x' },
-      { fixedAxis:'z', fixedVal: 30 + _SM, walkAxis:'x' },
-      { fixedAxis:'x', fixedVal:-30 - _SM, walkAxis:'z' },
-      { fixedAxis:'x', fixedVal:-30 + _SM, walkAxis:'z' },
-      { fixedAxis:'x', fixedVal: 30 - _SM, walkAxis:'z' },
-      { fixedAxis:'x', fixedVal: 30 + _SM, walkAxis:'z' },
+      { fixedAxis:'z', fixedVal:-28 - _SM, walkAxis:'x' },
+      { fixedAxis:'z', fixedVal:-28 + _SM, walkAxis:'x' },
+      { fixedAxis:'z', fixedVal: 28 - _SM, walkAxis:'x' },
+      { fixedAxis:'z', fixedVal: 28 + _SM, walkAxis:'x' },
+      { fixedAxis:'x', fixedVal:-28 - _SM, walkAxis:'z' },
+      { fixedAxis:'x', fixedVal:-28 + _SM, walkAxis:'z' },
+      { fixedAxis:'x', fixedVal: 28 - _SM, walkAxis:'z' },
+      { fixedAxis:'x', fixedVal: 28 + _SM, walkAxis:'z' },
     ];
-    const PED_BOUND = 245;
+    const PED_BOUND = 170;
     const peds = [];
     const _pedTexMgr = new THREE.LoadingManager();
     _pedTexMgr.setURLModifier(url => {
@@ -840,7 +842,7 @@
       playerCar.add(wg);
     });
 
-    playerCar.position.set(-120, 0, -30); // route z=-30, lane droite, face est
+    playerCar.position.set(-50, 0, -28); // route z=-28, lane droite, face est
     scene.add(playerCar);
 
     // ════════════════════════════════════════
