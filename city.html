@@ -518,7 +518,14 @@
     });
 
     _loadGLB('fire_hydrant_low_poly.glb', tmpl => {
-      if (!tmpl) return;
+      if (!tmpl) { console.error('fire_hydrant_low_poly.glb ÉCHEC chargement'); return; }
+      console.log('fire_hydrant GLB chargé OK, tmpl=', tmpl);
+      // Hydrant TEST hardcodé au centre (0,0,0)
+      const _testH = tmpl.clone(true);
+      _testH.scale.set(0.3, 0.3, 0.3);
+      _testH.position.set(0, 0, 0);
+      scene.add(_testH);
+      console.log('Hydrant TEST placé à (0,0,0)');
       _hydrantPosQ.forEach(([hx, hz]) => {
         const m = tmpl.clone(true);
         m.scale.set(0.3, 0.3, 0.3);
