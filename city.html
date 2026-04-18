@@ -346,7 +346,7 @@
     const _BLDG_GLB_DEFS = [
       { key:'building_06.glb',        scale:0.008 },
       { key:'new_york_buildings.glb', scale:0.005 },
-      { key:'bat simple.glb',         scale:0.01  },
+      { key:'bat%20simple.glb',         scale:0.01  },
     ];
     // 3 buckets selon tirage : 0-0.40 proc, 0.40-0.60 building_06, 0.60-0.80 new_york, 0.80-1.0 bat simple
     const _glbBldgQ = []; // { x, z, bucket:0|1|2 }
@@ -520,15 +520,15 @@
     _loadGLB('fire_hydrant_low_poly.glb', tmpl => {
       if (!tmpl) { console.error('fire_hydrant_low_poly.glb ÉCHEC chargement'); return; }
       console.log('fire_hydrant GLB chargé OK, tmpl=', tmpl);
-      // Hydrant TEST hardcodé au centre (0,0,0)
+      // Hydrant TEST visible à (0, 0, -20)
       const _testH = tmpl.clone(true);
-      _testH.scale.set(0.3, 0.3, 0.3);
-      _testH.position.set(0, 0, 0);
+      _testH.scale.set(0.5, 0.5, 0.5);
+      _testH.position.set(0, 0, -20);
       scene.add(_testH);
-      console.log('Hydrant TEST placé à (0,0,0)');
+      console.log('Hydrant TEST placé à (0,0,-20)');
       _hydrantPosQ.forEach(([hx, hz]) => {
         const m = tmpl.clone(true);
-        m.scale.set(0.3, 0.3, 0.3);
+        m.scale.set(0.5, 0.5, 0.5);
         m.position.set(hx, 0, hz);
         const box = new THREE.Box3().setFromObject(m);
         m.position.y = -box.min.y;
@@ -580,10 +580,17 @@
     }
 
     _loadGLB('traffic_light_low_poly.glb', tmpl => {
-      if (!tmpl) return;
+      if (!tmpl) { console.error('traffic_light_low_poly.glb ÉCHEC chargement'); return; }
+      console.log('traffic_light GLB chargé OK, tmpl=', tmpl);
+      // Feu TEST visible à (10, 0, 0)
+      const _testTL = tmpl.clone(true);
+      _testTL.scale.set(1.0, 1.0, 1.0);
+      _testTL.position.set(10, 0, 0);
+      scene.add(_testTL);
+      console.log('Traffic light TEST placé à (10,0,0)');
       _TL_POS.forEach(({ x, z }, idx) => {
         const clone = tmpl.clone(true);
-        clone.scale.set(0.5, 0.5, 0.5);
+        clone.scale.set(1.0, 1.0, 1.0);
         clone.position.set(x, 0, z);
         const box = new THREE.Box3().setFromObject(clone);
         clone.position.y = -box.min.y;
@@ -618,7 +625,7 @@
     function _loadGLB(key, cb) {
       const manager = new THREE.LoadingManager();
       // Redirige toutes les ressources (y compris Textures/colormap.png) vers la racine
-      manager.setURLModifier(url => NPC_BASE + url.split('/').pop());
+      manager.setURLModifier(url => NPC_BASE + encodeURIComponent(url.split('/').pop()));
       const loader = new THREE.GLTFLoader(manager);
       loader.load(NPC_BASE + key, g => cb(g.scene), null, () => { console.warn('GLB manquant:', key); cb(null); });
     }
