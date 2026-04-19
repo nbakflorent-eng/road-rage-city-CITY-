@@ -502,17 +502,10 @@
     }
 
     _loadGLB('traffic_light_low_poly.glb', tmpl => {
-      if (!tmpl) { console.error('traffic_light_low_poly.glb ÉCHEC chargement'); return; }
-      console.log('traffic_light GLB chargé OK, tmpl=', tmpl);
-      // Feu TEST visible à (10, 0, 0)
-      const _testTL = tmpl.clone(true);
-      _testTL.scale.set(1.0, 1.0, 1.0);
-      _testTL.position.set(10, 0, 0);
-      scene.add(_testTL);
-      console.log('Traffic light TEST placé à (10,0,0)');
+      if (!tmpl) return;
       _TL_POS.forEach(({ x, z }, idx) => {
         const clone = tmpl.clone(true);
-        clone.scale.set(1.0, 1.0, 1.0);
+        clone.scale.set(0.05, 0.05, 0.05);
         clone.position.set(x, 0, z);
         const box = new THREE.Box3().setFromObject(clone);
         clone.position.y = -box.min.y;
