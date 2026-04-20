@@ -348,7 +348,7 @@
       const _BPAL = [0x8B7355, 0x708090, 0xC2B280, 0x6B8E9F, 0xA0856C];
       const _BLOCS = [[-40,-40],[0,-40],[40,-40],[-40,0],[40,0],[-40,40],[0,40],[40,40]];
       const winGeo = new THREE.BoxGeometry(0.8, 1.0, 0.1);
-      const winMat = new THREE.MeshLambertMaterial({ color: 0xADD8E6 });
+      const winMat = new THREE.MeshBasicMaterial({ color: 0xADD8E6 });
       _BLOCS.forEach(([cx, cz]) => {
         const n = 4 + Math.floor(Math.random() * 2);
         for (let i = 0; i < n; i++) {
@@ -363,7 +363,7 @@
           // Corps
           const body = new THREE.Mesh(
             new THREE.BoxGeometry(bw, bh, bd),
-            new THREE.MeshLambertMaterial({ color: col })
+            new THREE.MeshBasicMaterial({ color: col })
           );
           body.position.y = bh / 2;
           grp.add(body);
@@ -371,7 +371,7 @@
           const roofCol = new THREE.Color(col).multiplyScalar(0.65);
           const roof = new THREE.Mesh(
             new THREE.BoxGeometry(bw + 0.3, 0.5, bd + 0.3),
-            new THREE.MeshLambertMaterial({ color: roofCol })
+            new THREE.MeshBasicMaterial({ color: roofCol })
           );
           roof.position.y = bh + 0.25;
           grp.add(roof);
@@ -496,8 +496,8 @@
     //  BORNES INCENDIE GLB
     // ════════════════════════════════════════
     const _hydrantPosQ = [
-      [-45, -22], [5, -62], [45, 18],
-      [-22,  45], [22, -45], [-5, 62],
+      [-48, -22], [8, -65], [48, 18],
+      [-25,  48], [25, -48], [-8, 65],
     ];
 
     _loadGLB('fire_hydrant_low_poly.glb', tmpl => {
