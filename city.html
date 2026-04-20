@@ -98,11 +98,11 @@
     // ════════════════════════════════════════
     //  MATÉRIAUX
     // ════════════════════════════════════════
-    const matGrass    = new THREE.MeshLambertMaterial({ color: 0x4a7c3f });
-    const matAsphalt  = new THREE.MeshLambertMaterial({ color: 0x2e2e2e });
-    const matSidewalk = new THREE.MeshLambertMaterial({ color: 0xc0bfba });
-    const matYellow   = new THREE.MeshLambertMaterial({ color: 0xf5c518 });
-    const matWhite    = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const matGrass    = new THREE.MeshBasicMaterial({ color: 0x4a7c3f });
+    const matAsphalt  = new THREE.MeshBasicMaterial({ color: 0x2e2e2e });
+    const matSidewalk = new THREE.MeshBasicMaterial({ color: 0xc0bfba });
+    const matYellow   = new THREE.MeshBasicMaterial({ color: 0xf5c518 });
+    const matWhite    = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
     // ────────────────────────────────────────
     //  SOL (herbe / asphalte de base)
@@ -236,15 +236,15 @@
       buildingBounds.push({ x, z, hw: bw * 0.5 + 0.4, hd: bd * 0.5 + 0.4 });
 
       const fc        = FACADE_PAL[ri(0, FACADE_PAL.length - 1)];
-      const facadeMat = new THREE.MeshLambertMaterial({ color: fc });
-      const roofMatB  = new THREE.MeshLambertMaterial({ color: 0x484848 });
-      const baseMat2  = new THREE.MeshLambertMaterial({ color: 0x383838 });
+      const facadeMat = new THREE.MeshBasicMaterial({ color: fc });
+      const roofMatB  = new THREE.MeshBasicMaterial({ color: 0x484848 });
+      const baseMat2  = new THREE.MeshBasicMaterial({ color: 0x383838 });
 
       // Texture fenêtres proportionnelle aux dimensions
       const winCols = Math.max(2, Math.round(bw / 2.5));
       const winRows = Math.max(2, Math.round(bh / 3.8));
       const winTex  = makeWinTex(winCols, winRows);
-      const winMat  = new THREE.MeshLambertMaterial({ map: winTex });
+      const winMat  = new THREE.MeshBasicMaterial({ map: winTex });
 
       // Multi-matériaux BoxGeometry : [+X, -X, +Y, -Y, +Z, -Z]
       // Fenêtres sur les 4 faces verticales, toit/base unis
@@ -258,7 +258,7 @@
       // — Acrotère (toit plat légèrement en saillie) —
       const roofCap = new THREE.Mesh(
         new THREE.BoxGeometry(bw + 0.4, 0.35, bd + 0.4),
-        new THREE.MeshLambertMaterial({ color: 0x555555 })
+        new THREE.MeshBasicMaterial({ color: 0x555555 })
       );
       roofCap.position.set(x, bh + 0.18, z);
       scene.add(roofCap);
@@ -268,7 +268,7 @@
         const ah = rr(1.2, 4.0);
         const ant = new THREE.Mesh(
           new THREE.BoxGeometry(0.1, ah, 0.1),
-          new THREE.MeshLambertMaterial({ color: 0x222222 })
+          new THREE.MeshBasicMaterial({ color: 0x222222 })
         );
         ant.position.set(
           x + rr(-bw * 0.3, bw * 0.3),
@@ -283,7 +283,7 @@
         const chH = rr(0.7, 1.8);
         const chim = new THREE.Mesh(
           new THREE.BoxGeometry(0.78, chH, 0.78),
-          new THREE.MeshLambertMaterial({ color: 0x7a3f2e })
+          new THREE.MeshBasicMaterial({ color: 0x7a3f2e })
         );
         chim.position.set(
           x + rr(-bw * 0.28, bw * 0.28),
@@ -300,7 +300,7 @@
         const pd = bd * rr(0.35, 0.6);
         const penth = new THREE.Mesh(
           new THREE.BoxGeometry(pw, ph, pd),
-          new THREE.MeshLambertMaterial({ color: fc })
+          new THREE.MeshBasicMaterial({ color: fc })
         );
         penth.position.set(
           x + rr(-bw * 0.1, bw * 0.1),
@@ -317,7 +317,7 @@
         for (let k = 0; k < n; k++) {
           const ac = new THREE.Mesh(
             new THREE.BoxGeometry(rr(0.6, 1.1), rr(0.4, 0.7), rr(0.5, 0.9)),
-            new THREE.MeshLambertMaterial({ color: 0x9090a0 })
+            new THREE.MeshBasicMaterial({ color: 0x9090a0 })
           );
           ac.position.set(
             x + rr(-bw * 0.35, bw * 0.35),
@@ -455,8 +455,20 @@
       }
       let loaded = 0;
       const done = () => { if (++loaded === 2) place(); };
-      _loadGLB('arbre_low_poly.glb',                g => { if (g) arbreTmpl = g; done(); });
-      _loadGLB('pine_trees_pack__ps1_low_poly.glb',  g => { if (g) pineTmpl  = g; done(); });
+      _loadGLB('arbre_low_poly.glb',                g => {
+        if (g) {
+          g.traverse(c => { if (c.isMesh && c.material && !c.material.map) c.material = new THREE.MeshBasicMaterial({ color: c.material.color || 0x3a6b25 }); });
+          arbreTmpl = g;
+        }
+        done();
+      });
+      _loadGLB('pine_trees_pack__ps1_low_poly.glb',  g => {
+        if (g) {
+          g.traverse(c => { if (c.isMesh) c.material = new THREE.MeshBasicMaterial({ color: 0x2d5a1b }); });
+          pineTmpl = g;
+        }
+        done();
+      });
     })();
 
     // ════════════════════════════════════════
@@ -487,6 +499,7 @@
 
     _loadGLB('street_lamp.glb', tmpl => {
       if (!tmpl) return;
+      tmpl.traverse(c => { if (c.isMesh) c.material = new THREE.MeshBasicMaterial({ color: 0x888888 }); });
       _lampPosQ.forEach(([lx, lz, rotY]) => {
         const m = tmpl.clone(true);
         m.scale.set(0.008, 0.008, 0.008);
@@ -508,6 +521,7 @@
 
     _loadGLB('fire_hydrant_low_poly.glb', tmpl => {
       if (!tmpl) return;
+      tmpl.traverse(c => { if (c.isMesh && c.material && !c.material.map) c.material = new THREE.MeshBasicMaterial({ color: c.material.color || 0xcc3300 }); });
       _hydrantPosQ.forEach(([hx, hz]) => {
         const m = tmpl.clone(true);
         m.scale.set(2.0, 2.0, 2.0);
@@ -767,7 +781,7 @@
     const playerCar = new THREE.Group();
 
     // — caisse
-    const matBody = new THREE.MeshLambertMaterial({ color: 0xcc1111 });
+    const matBody = new THREE.MeshBasicMaterial({ color: 0xcc1111 });
     const bodyMesh = new THREE.Mesh(
       new THREE.BoxGeometry(CAR_W, CAR_H, CAR_L),
       matBody
@@ -777,7 +791,7 @@
     playerCar.add(bodyMesh);
 
     // — cabine
-    const matCabin = new THREE.MeshLambertMaterial({ color: 0xe82020 });
+    const matCabin = new THREE.MeshBasicMaterial({ color: 0xe82020 });
     const cabinMesh = new THREE.Mesh(
       new THREE.BoxGeometry(CAR_W * 0.88, CAR_H * 0.85, CAR_L * 0.52),
       matCabin
@@ -787,7 +801,7 @@
     playerCar.add(cabinMesh);
 
     // — vitres (teintées sombres)
-    const matGlass = new THREE.MeshLambertMaterial({ color: 0x1a2a3a, transparent: true, opacity: 0.7 });
+    const matGlass = new THREE.MeshBasicMaterial({ color: 0x1a2a3a, transparent: true, opacity: 0.7 });
     const windshield = new THREE.Mesh(
       new THREE.BoxGeometry(CAR_W * 0.82, CAR_H * 0.65, 0.05),
       matGlass
@@ -796,7 +810,7 @@
     playerCar.add(windshield);
 
     // — phares avant (jaune clair)
-    const matHead = new THREE.MeshLambertMaterial({ color: 0xffee88 });
+    const matHead = new THREE.MeshBasicMaterial({ color: 0xffee88 });
     [-0.65, 0.65].forEach(side => {
       const h = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.2, 0.05), matHead);
       h.position.set(side, CAR_H * 0.55, CAR_L / 2 + 0.03);
@@ -804,8 +818,8 @@
     });
 
     // — roues (cylindres noirs)
-    const matWheel = new THREE.MeshLambertMaterial({ color: 0x111111 });
-    const matRim   = new THREE.MeshLambertMaterial({ color: 0x888888 });
+    const matWheel = new THREE.MeshBasicMaterial({ color: 0x111111 });
+    const matRim   = new THREE.MeshBasicMaterial({ color: 0x888888 });
     const wheelR   = 0.34;
     const wheelW   = 0.22;
     const wheelPosArr = [
