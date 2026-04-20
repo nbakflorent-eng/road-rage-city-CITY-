@@ -462,13 +462,14 @@
         }
         done();
       });
-      _loadGLB('pine_trees_pack__ps1_low_poly.glb',  g => {
+      /* _loadGLB('pine_trees_pack__ps1_low_poly.glb',  g => {
         if (g) {
           g.traverse(c => { if (c.isMesh) c.material = new THREE.MeshBasicMaterial({ color: 0x2d5a1b }); });
           pineTmpl = g;
         }
         done();
-      });
+      }); */
+      done(); // pine désactivé — compteur done() maintenu
     })();
 
     // ════════════════════════════════════════
