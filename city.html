@@ -343,6 +343,30 @@
       });
     });
 
+    // ── Bâtiments procéduraux dans les 9 blocs entre routes ──
+    const _BLDG_COLORS = [0xb0a898, 0xd4c9a8, 0x9b8b7a, 0xb8c9d4, 0xc8b89a, 0x8899aa, 0xc0b8a8, 0x7a8a7a];
+    const _BLOC_CENTERS = [
+      [-40,-40],[ 0,-40],[40,-40],
+      [-40,  0],         [40,  0],
+      [-40, 40],[ 0, 40],[40, 40],
+    ];
+    _BLOC_CENTERS.forEach(([cx, cz]) => {
+      const n = 3 + Math.floor(Math.random() * 3); // 3 à 5 bâtiments
+      for (let i = 0; i < n; i++) {
+        const bx = cx + (Math.random() * 24 - 12);
+        const bz = cz + (Math.random() * 24 - 12);
+        const bw = 5 + Math.random() * 8;
+        const bd = 5 + Math.random() * 8;
+        const bh = 6 + Math.random() * 14;
+        const col = _BLDG_COLORS[Math.floor(Math.random() * _BLDG_COLORS.length)];
+        const mat = new THREE.MeshLambertMaterial({ color: col });
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), mat);
+        mesh.position.set(bx, bh / 2, bz);
+        scene.add(mesh);
+        buildingBounds.push({ x: bx, z: bz, hw: bw / 2 + 0.4, hd: bd / 2 + 0.4 });
+      }
+    });
+
     // ════════════════════════════════════════
     //  ARBRES GLB (alignés sur les trottoirs)
     // ════════════════════════════════════════
@@ -468,9 +492,7 @@
 
     const _TL_POS = [];
     RD_POS.forEach(rx => RD_POS.forEach(rz => {
-      [[-1,-1],[-1,1],[1,-1],[1,1]].forEach(([sx, sz]) => {
-        _TL_POS.push({ x: rx + sx * (RD_W / 2 + SW_W + 1), z: rz + sz * (RD_W / 2 + SW_W + 1) });
-      });
+      _TL_POS.push({ x: rx + 8, z: rz + 8 });
     }));
     const _TL_DUR    = { red:5.0, green:5.0, orange:1.0 };
     const _TL_NEXT   = { red:'green', green:'orange', orange:'red' };
@@ -505,7 +527,7 @@
       if (!tmpl) return;
       _TL_POS.forEach(({ x, z }, idx) => {
         const clone = tmpl.clone(true);
-        clone.scale.set(0.05, 0.05, 0.05);
+        clone.scale.set(3.0, 3.0, 3.0);
         clone.position.set(x, 0, z);
         const box = new THREE.Box3().setFromObject(clone);
         clone.position.y = -box.min.y;
