@@ -610,21 +610,28 @@
 
     // ── Feux tricolores procéduraux (MeshBasicMaterial uniquement) ──
     function spawnTrafficLights() {
-      const matPole  = new THREE.MeshBasicMaterial({ color: 0x333333 });
-      const matBox   = new THREE.MeshBasicMaterial({ color: 0x111111 });
-      const matRed   = new THREE.MeshBasicMaterial({ color: 0xff2200 });
-      const matOrange= new THREE.MeshBasicMaterial({ color: 0xff8800 });
-      const matGreen = new THREE.MeshBasicMaterial({ color: 0x00cc00 });
-      RD_POS.forEach(rx => RD_POS.forEach(rz => {
-        const grp = new THREE.Group();
-        grp.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 5, 8), matPole), { position: new THREE.Vector3(0, 2.5, 0) }));
-        grp.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.8, 0.4), matBox),           { position: new THREE.Vector3(0, 5.4, 0) }));
-        grp.add(Object.assign(new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), matRed),            { position: new THREE.Vector3(0, 6.1, 0) }));
-        grp.add(Object.assign(new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), matOrange),         { position: new THREE.Vector3(0, 5.4, 0) }));
-        grp.add(Object.assign(new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), matGreen),          { position: new THREE.Vector3(0, 4.7, 0) }));
-        grp.position.set(rx + 9, 0, rz + 9);
-        scene.add(grp);
-      }));
+      const matPole   = new THREE.MeshBasicMaterial({ color: 0x333333 });
+      const matBox    = new THREE.MeshBasicMaterial({ color: 0x111111 });
+      const matRed    = new THREE.MeshBasicMaterial({ color: 0xff2200 });
+      const matOrange = new THREE.MeshBasicMaterial({ color: 0xff8800 });
+      const matGreen  = new THREE.MeshBasicMaterial({ color: 0x00cc00 });
+      RD_POS.forEach(rx => {
+        RD_POS.forEach(rz => {
+          const grp = new THREE.Group();
+          const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 5, 8), matPole);
+          pole.position.set(0, 2.5, 0); grp.add(pole);
+          const box = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.8, 0.4), matBox);
+          box.position.set(0, 5.4, 0); grp.add(box);
+          const red = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), matRed);
+          red.position.set(0, 6.1, 0); grp.add(red);
+          const orange = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), matOrange);
+          orange.position.set(0, 5.4, 0); grp.add(orange);
+          const green = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), matGreen);
+          green.position.set(0, 4.7, 0); grp.add(green);
+          grp.position.set(rx + 9, 0, rz + 9);
+          scene.add(grp);
+        });
+      });
     }
     spawnTrafficLights();
 
