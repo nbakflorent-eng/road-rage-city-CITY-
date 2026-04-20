@@ -343,29 +343,61 @@
       });
     });
 
-    // ── Bâtiments procéduraux dans les 9 blocs entre routes ──
-    const _BLDG_COLORS = [0xb0a898, 0xd4c9a8, 0x9b8b7a, 0xb8c9d4, 0xc8b89a, 0x8899aa, 0xc0b8a8, 0x7a8a7a];
-    const _BLOC_CENTERS = [
-      [-40,-40],[ 0,-40],[40,-40],
-      [-40,  0],         [40,  0],
-      [-40, 40],[ 0, 40],[40, 40],
-    ];
-    _BLOC_CENTERS.forEach(([cx, cz]) => {
-      const n = 3 + Math.floor(Math.random() * 3); // 3 à 5 bâtiments
-      for (let i = 0; i < n; i++) {
-        const bx = cx + (Math.random() * 24 - 12);
-        const bz = cz + (Math.random() * 24 - 12);
-        const bw = 5 + Math.random() * 8;
-        const bd = 5 + Math.random() * 8;
-        const bh = 6 + Math.random() * 14;
-        const col = _BLDG_COLORS[Math.floor(Math.random() * _BLDG_COLORS.length)];
-        const mat = new THREE.MeshLambertMaterial({ color: col });
-        const mesh = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), mat);
-        mesh.position.set(bx, bh / 2, bz);
-        scene.add(mesh);
-        buildingBounds.push({ x: bx, z: bz, hw: bw / 2 + 0.4, hd: bd / 2 + 0.4 });
-      }
-    });
+    // ── Bâtiments procéduraux réalistes ──
+    function spawnBuildings() {
+      const _BPAL = [0x8B7355, 0x708090, 0xC2B280, 0x6B8E9F, 0xA0856C];
+      const _BLOCS = [[-40,-40],[0,-40],[40,-40],[-40,0],[40,0],[-40,40],[0,40],[40,40]];
+      const winGeo = new THREE.BoxGeometry(0.8, 1.0, 0.1);
+      const winMat = new THREE.MeshLambertMaterial({ color: 0xADD8E6 });
+      _BLOCS.forEach(([cx, cz]) => {
+        const n = 4 + Math.floor(Math.random() * 2);
+        for (let i = 0; i < n; i++) {
+          const bx = cx + (Math.random() * 22 - 11);
+          const bz = cz + (Math.random() * 22 - 11);
+          if (RD_POS.some(r => Math.abs(bx - r) < 10 || Math.abs(bz - r) < 10)) continue;
+          const bw = 6 + Math.random() * 8;
+          const bd = 6 + Math.random() * 8;
+          const bh = 8 + Math.random() * 17;
+          const col = _BPAL[Math.floor(Math.random() * _BPAL.length)];
+          const grp = new THREE.Group();
+          // Corps
+          const body = new THREE.Mesh(
+            new THREE.BoxGeometry(bw, bh, bd),
+            new THREE.MeshLambertMaterial({ color: col })
+          );
+          body.position.y = bh / 2;
+          grp.add(body);
+          // Toit (légèrement plus large, plus foncé)
+          const roofCol = new THREE.Color(col).multiplyScalar(0.65);
+          const roof = new THREE.Mesh(
+            new THREE.BoxGeometry(bw + 0.3, 0.5, bd + 0.3),
+            new THREE.MeshLambertMaterial({ color: roofCol })
+          );
+          roof.position.y = bh + 0.25;
+          grp.add(roof);
+          // Fenêtres sur 4 faces (grille régulière, offset 0.05 anti z-fight)
+          const wC = Math.min(3, Math.max(2, Math.floor(bw / 3)));
+          const wR = Math.min(4, Math.max(2, Math.floor(bh / 4)));
+          for (let r = 0; r < wR; r++) {
+            const wy = 1.5 + (bh - 2) / (wR - 1 || 1) * r;
+            for (let c = 0; c < wC; c++) {
+              const wx = -bw / 2 + bw / (wC + 1) * (c + 1);
+              const wz = -bd / 2 + bd / (wC + 1) * (c + 1);
+              // Front / Back
+              const wf = new THREE.Mesh(winGeo, winMat); wf.position.set(wx, wy, bd/2+0.05); grp.add(wf);
+              const wb = new THREE.Mesh(winGeo, winMat); wb.position.set(wx, wy, -bd/2-0.05); wb.rotation.y = Math.PI; grp.add(wb);
+              // Left / Right
+              const wl = new THREE.Mesh(winGeo, winMat); wl.position.set(-bw/2-0.05, wy, wz); wl.rotation.y = -Math.PI/2; grp.add(wl);
+              const wr = new THREE.Mesh(winGeo, winMat); wr.position.set(bw/2+0.05, wy, wz); wr.rotation.y = Math.PI/2; grp.add(wr);
+            }
+          }
+          grp.position.set(bx, 0, bz);
+          scene.add(grp);
+          buildingBounds.push({ x: bx, z: bz, hw: bw/2 + 0.4, hd: bd/2 + 0.4 });
+        }
+      });
+    }
+    spawnBuildings();
 
     // ════════════════════════════════════════
     //  ARBRES GLB (alignés sur les trottoirs)
@@ -377,28 +409,25 @@
       { key:'pine_trees_pack__ps1_low_poly.glb', scale:1.5 },
     ];
 
+    // Positions d'arbres dans les zones vertes (loin des routes et trottoirs)
     const _treePosQ = [];
-    RD_POS.forEach(rz => {
-      [-1, 1].forEach(side => {
-        const tz = rz + side * SW_MID;
-        for (let tx = -WORLD / 2 + 6; tx < WORLD / 2; tx += TREE_STP) {
-          if (!RD_POS.some(rx => Math.abs(tx - rx) < RD_W / 2 + 2)) _treePosQ.push([tx, tz]);
-        }
-      });
-    });
-    RD_POS.forEach(rx => {
-      [-1, 1].forEach(side => {
-        const tx = rx + side * SW_MID;
-        for (let tz = -WORLD / 2 + 6; tz < WORLD / 2; tz += TREE_STP) {
-          if (!RD_POS.some(rz => Math.abs(tz - rz) < RD_W / 2 + 2)) _treePosQ.push([tx, tz]);
-        }
-      });
+    const _GREEN_SEEDS = [
+      [-40,-40],[0,-40],[40,-40],[-40,0],[40,0],[-40,40],[0,40],[40,40],
+      [-100,-100],[0,-100],[100,-100],[-100,0],[100,0],[-100,100],[0,100],[100,100],
+    ];
+    _GREEN_SEEDS.forEach(([cx, cz]) => {
+      for (let k = 0; k < 3; k++) {
+        const tx = cx + (Math.random() * 18 - 9);
+        const tz = cz + (Math.random() * 18 - 9);
+        if (RD_POS.every(r => Math.abs(tx - r) > RD_W / 2 + SW_W + 1 && Math.abs(tz - r) > RD_W / 2 + SW_W + 1))
+          _treePosQ.push([tx, tz]);
+      }
     });
 
     (function _initTrees() {
       let arbreTmpl = null, pineTmpl = null;
       function place() {
-        const slots = _treePosQ.slice(0, 20); // max 20 arbres
+        const slots = _treePosQ.slice(0, 20);
         slots.forEach(([tx, tz]) => {
           const usePine = pineTmpl && Math.random() < 0.5;
           let m;
@@ -409,10 +438,10 @@
           } else if (arbreTmpl) {
             m = arbreTmpl.clone(true);
           } else return;
-          const s = 0.6 + Math.random() * 0.8;
+          const s = 0.8 + Math.random() * 0.8;
+          m.rotation.set(0, Math.random() * Math.PI * 2, 0);
           m.scale.set(s, s, s);
           m.position.set(tx, 0, tz);
-          m.rotation.y = Math.random() * Math.PI * 2;
           const box = new THREE.Box3().setFromObject(m);
           m.position.y = -box.min.y;
           scene.add(m);
