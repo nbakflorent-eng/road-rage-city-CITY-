@@ -498,6 +498,7 @@
       });
     });
 
+    /* street_lamp désactivé
     _loadGLB('street_lamp.glb', tmpl => {
       if (!tmpl) return;
       tmpl.traverse(c => { if (c.isMesh) c.material = new THREE.MeshBasicMaterial({ color: 0x888888 }); });
@@ -510,7 +511,7 @@
         m.position.y = -box.min.y;
         scene.add(m);
       });
-    });
+    }); */
 
     // ════════════════════════════════════════
     //  BORNES INCENDIE GLB
@@ -573,6 +574,7 @@
       });
     }
 
+    /* traffic_light_low_poly désactivé
     _loadGLB('traffic_light_low_poly.glb', tmpl => {
       if (!tmpl) return;
       _TL_POS.forEach(({ x, z }, idx) => {
@@ -583,7 +585,6 @@
         clone.position.y = -box.min.y;
         clone.traverse(ch => { if (ch.isMesh) ch.receiveShadow = false; });
         scene.add(clone);
-        // Identification des lumières par couleur de matériau
         const lightMeshes = [[], [], []];
         clone.traverse(obj => {
           if (!obj.isMesh || !obj.material || !obj.material.color) return;
@@ -599,7 +600,7 @@
         _trafficLights.push(tl);
         _applyTLPhase(tl);
       });
-    });
+    }); */
 
     // ════════════════════════════════════════
     //  VOITURES PNJ — Kenney GLB chargés via URL relative
@@ -742,13 +743,14 @@
     }
 
     // 15 piétons sur 16 trottoirs, 1 par trottoir
+    /* _initPeds désactivé
     (function _initPeds() {
-      const dist = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0]; // 15 piétons sur 16 trottoirs
+      const dist = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0];
       PED_TRACKS.forEach((track, ti) => {
         const n = dist[ti];
         for (let i = 0; i < n; i++) {
           const pos  = -PED_BOUND + (PED_BOUND * 2) / (n + 1) * (i + 1);
-          const lane = (Math.floor(Math.random() * 3) - 1) * 0.5; // -0.5, 0 ou +0.5
+          const lane = (Math.floor(Math.random() * 3) - 1) * 0.5;
           const key  = PED_MODELS[Math.floor(Math.random() * PED_MODELS.length)];
           _pedLoader.load(PED_BASE + key + '.glb', gltf => {
             const mesh = gltf.scene;
@@ -768,7 +770,7 @@
           }, null, err => console.error('Erreur chargement piéton:', key, err));
         }
       });
-    })();
+    })(); */
 
     // ════════════════════════════════════════
     //  VOITURE JOUEUR
