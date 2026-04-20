@@ -441,6 +441,7 @@
       function place() {
         const slots = _treePosQ.slice(0, 20);
         slots.forEach(([tx, tz]) => {
+          if (buildingBounds.some(b => Math.abs(tx - b.x) < 8 && Math.abs(tz - b.z) < 8)) return;
           const usePine = pineTmpl && Math.random() < 0.5;
           let m;
           if (usePine) {
@@ -523,8 +524,7 @@
     //  BORNES INCENDIE GLB
     // ════════════════════════════════════════
     const _hydrantPosQ = [
-      [-67, -20], [-67, 20], [67, -20], [67, 20],
-      [-20, -67], [20, -67], [-20, 67], [20, 67],
+      [-55, -8], [55, 8], [-8, -55], [8, 55], [-55, 42], [42, -55],
     ];
 
     _loadGLB('fire_hydrant_low_poly.glb', tmpl => {
