@@ -358,12 +358,20 @@
       _BLOCS.forEach(([cx, cz]) => {
         const n = 4 + Math.floor(Math.random() * 2);
         for (let i = 0; i < n; i++) {
-          const bx = cx + (Math.random() * 22 - 11);
-          const bz = cz + (Math.random() * 22 - 11);
-          if (RD_POS.some(r => Math.abs(bx - r) < 10 || Math.abs(bz - r) < 10)) continue;
           const bw = 6 + Math.random() * 8;
           const bd = 6 + Math.random() * 8;
           const bh = 8 + Math.random() * 17;
+          let bx, bz, ok = false;
+          for (let attempt = 0; attempt < 10; attempt++) {
+            bx = cx + (Math.random() * 22 - 11);
+            bz = cz + (Math.random() * 22 - 11);
+            const clear = RD_POS.every(r =>
+              Math.abs(bx - r) > RD_W / 2 + bw / 2 + 2 &&
+              Math.abs(bz - r) > RD_W / 2 + bd / 2 + 2
+            );
+            if (clear) { ok = true; break; }
+          }
+          if (!ok) continue;
           const col = _BPAL[Math.floor(Math.random() * _BPAL.length)];
           const grp = new THREE.Group();
           // Corps
@@ -389,10 +397,8 @@
             for (let c = 0; c < wC; c++) {
               const wx = -bw / 2 + bw / (wC + 1) * (c + 1);
               const wz = -bd / 2 + bd / (wC + 1) * (c + 1);
-              // Front / Back
               const wf = new THREE.Mesh(winGeo, winMat); wf.position.set(wx, wy, bd/2+0.05); grp.add(wf);
               const wb = new THREE.Mesh(winGeo, winMat); wb.position.set(wx, wy, -bd/2-0.05); wb.rotation.y = Math.PI; grp.add(wb);
-              // Left / Right
               const wl = new THREE.Mesh(winGeo, winMat); wl.position.set(-bw/2-0.05, wy, wz); wl.rotation.y = -Math.PI/2; grp.add(wl);
               const wr = new THREE.Mesh(winGeo, winMat); wr.position.set(bw/2+0.05, wy, wz); wr.rotation.y = Math.PI/2; grp.add(wr);
             }
@@ -517,8 +523,8 @@
     //  BORNES INCENDIE GLB
     // ════════════════════════════════════════
     const _hydrantPosQ = [
-      [-48, -22], [8, -65], [48, 18],
-      [-25,  48], [25, -48], [-8, 65],
+      [-67, -20], [-67, 20], [67, -20], [67, 20],
+      [-20, -67], [20, -67], [-20, 67], [20, 67],
     ];
 
     _loadGLB('fire_hydrant_low_poly.glb', tmpl => {
@@ -601,6 +607,26 @@
         _applyTLPhase(tl);
       });
     }); */
+
+    // ── Feux tricolores procéduraux (MeshBasicMaterial uniquement) ──
+    function spawnTrafficLights() {
+      const matPole  = new THREE.MeshBasicMaterial({ color: 0x333333 });
+      const matBox   = new THREE.MeshBasicMaterial({ color: 0x111111 });
+      const matRed   = new THREE.MeshBasicMaterial({ color: 0xff2200 });
+      const matOrange= new THREE.MeshBasicMaterial({ color: 0xff8800 });
+      const matGreen = new THREE.MeshBasicMaterial({ color: 0x00cc00 });
+      RD_POS.forEach(rx => RD_POS.forEach(rz => {
+        const grp = new THREE.Group();
+        grp.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 5, 8), matPole), { position: new THREE.Vector3(0, 2.5, 0) }));
+        grp.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.8, 0.4), matBox),           { position: new THREE.Vector3(0, 5.4, 0) }));
+        grp.add(Object.assign(new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), matRed),            { position: new THREE.Vector3(0, 6.1, 0) }));
+        grp.add(Object.assign(new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), matOrange),         { position: new THREE.Vector3(0, 5.4, 0) }));
+        grp.add(Object.assign(new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), matGreen),          { position: new THREE.Vector3(0, 4.7, 0) }));
+        grp.position.set(rx + 9, 0, rz + 9);
+        scene.add(grp);
+      }));
+    }
+    spawnTrafficLights();
 
     // ════════════════════════════════════════
     //  VOITURES PNJ — Kenney GLB chargés via URL relative
