@@ -421,37 +421,20 @@
       { key:'pine_trees_pack__ps1_low_poly.glb', scale:1.5 },
     ];
 
-    // Positions d'arbres dans les zones vertes (loin des routes et trottoirs)
-    const _treePosQ = [];
-    const _GREEN_SEEDS = [
-      [-40,-40],[0,-40],[40,-40],[-40,0],[40,0],[-40,40],[0,40],[40,40],
-      [-100,-100],[0,-100],[100,-100],[-100,0],[100,0],[-100,100],[0,100],[100,100],
-    ];
-    _GREEN_SEEDS.forEach(([cx, cz]) => {
-      for (let k = 0; k < 3; k++) {
-        const tx = cx + (Math.random() * 18 - 9);
-        const tz = cz + (Math.random() * 18 - 9);
-        if (RD_POS.every(r => Math.abs(tx - r) > RD_W / 2 + SW_W + 1 && Math.abs(tz - r) > RD_W / 2 + SW_W + 1))
-          _treePosQ.push([tx, tz]);
-      }
-    });
-
     (function _initTrees() {
-      let arbreTmpl = null, pineTmpl = null;
+      const _RANGES = [[-95,-70],[-35,-25],[25,35],[70,95]];
+      const _treePosQ = [];
+      while (_treePosQ.length < 15) {
+        const rx = _RANGES[Math.floor(Math.random() * _RANGES.length)];
+        const rz = _RANGES[Math.floor(Math.random() * _RANGES.length)];
+        _treePosQ.push([rx[0] + Math.random()*(rx[1]-rx[0]), rz[0] + Math.random()*(rz[1]-rz[0])]);
+      }
+      let arbreTmpl = null;
       function place() {
-        const slots = _treePosQ.slice(0, 20);
-        slots.forEach(([tx, tz]) => {
-          if (buildingBounds.some(b => Math.abs(tx - b.x) < 8 && Math.abs(tz - b.z) < 8)) return;
-          const usePine = pineTmpl && Math.random() < 0.5;
-          let m;
-          if (usePine) {
-            const kids = pineTmpl.children.filter(c => c.isMesh || c.isGroup || c.children.length);
-            const src  = kids.length ? kids[Math.floor(Math.random() * kids.length)] : pineTmpl;
-            m = src.clone(true);
-          } else if (arbreTmpl) {
-            m = arbreTmpl.clone(true);
-          } else return;
-          const s = 0.8 + Math.random() * 0.8;
+        if (!arbreTmpl) return;
+        _treePosQ.forEach(([tx, tz]) => {
+          const m = arbreTmpl.clone(true);
+          const s = 0.8 + Math.random() * 0.7;
           m.rotation.set(0, Math.random() * Math.PI * 2, 0);
           m.scale.set(s, s, s);
           m.position.set(tx, 0, tz);
@@ -524,7 +507,7 @@
     //  BORNES INCENDIE GLB
     // ════════════════════════════════════════
     const _hydrantPosQ = [
-      [-55, -8], [55, 8], [-8, -55], [8, 55], [-55, 42], [42, -55],
+      [-15, -35], [15, -35], [-35, 15], [-35, -15], [35, 15], [35, -15],
     ];
 
     _loadGLB('fire_hydrant_low_poly.glb', tmpl => {
@@ -931,9 +914,9 @@
       } else if (rev) {
         carSpeed = Math.max(carSpeed - BRAKE * dt, -MAX_REV);
       } else {
-        // Frottement
-        if (carSpeed > 0) carSpeed = Math.max(carSpeed - FRICTION * dt, 0);
-        else              carSpeed = Math.min(carSpeed + FRICTION * dt, 0);
+        carSpeed *= 0.92;
+        if (Math.abs(carSpeed) < 0.01) carSpeed = 0;
+        if (carSpeed < 0) carSpeed = 0;
       }
 
       // Braquage (proportionnel à la vitesse)
@@ -1005,6 +988,8 @@
           return;
         }
         npc.blockedTime = 0;
+        // Arrêt aux intersections selon phase du feu
+        if (RD_POS.some(r => Math.abs(npc.t - r) < 8) && Math.sin(Date.now() * 0.001 + idx) > 0) return;
         // Position candidate (vitesse fixe 6-14 u/s, direction fixe)
         const newT = npc.t + npc.dir * npc.speed * dt;
         // Déplacement validé + rebouclage
