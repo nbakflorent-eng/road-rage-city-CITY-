@@ -727,7 +727,7 @@
       { fixedAxis:'x', fixedVal: r - _SM, walkAxis:'z' },
       { fixedAxis:'x', fixedVal: r + _SM, walkAxis:'z' },
     ]);
-    const PED_BOUND = 195;
+    const PED_BOUND = 85;
     const peds = [];
     const _pedTexMgr = new THREE.LoadingManager();
     _pedTexMgr.setURLModifier(url => {
@@ -758,35 +758,38 @@
       return { legL, legR };
     }
 
-    // 15 piétons sur 16 trottoirs, 1 par trottoir
-    /* _initPeds désactivé
+    // 24 piétons — 3 par trottoir sur 8 trottoirs (fixedAxis:'z', tous les 4 axes)
     (function _initPeds() {
-      const dist = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0];
-      PED_TRACKS.forEach((track, ti) => {
-        const n = dist[ti];
-        for (let i = 0; i < n; i++) {
-          const pos  = -PED_BOUND + (PED_BOUND * 2) / (n + 1) * (i + 1);
-          const lane = (Math.floor(Math.random() * 3) - 1) * 0.5;
-          const key  = PED_MODELS[Math.floor(Math.random() * PED_MODELS.length)];
-          _pedLoader.load(PED_BASE + key + '.glb', gltf => {
-            const mesh = gltf.scene;
-            mesh.scale.set(0.5, 0.5, 0.5);
-            if (track.fixedAxis === 'z') mesh.position.set(pos, 0, track.fixedVal + lane);
-            else                          mesh.position.set(track.fixedVal + lane, 0, pos);
+      const _PED_COLORS = [0xe74c3c, 0x3498db, 0x2ecc71, 0xf39c12, 0x9b59b6];
+      const tracks8 = PED_TRACKS.filter(t => t.fixedAxis === 'z');
+      let pedIndex = 0;
+      tracks8.forEach(track => {
+        for (let i = 0; i < 3; i++) {
+          const pos   = -80 + Math.random() * 160;
+          const dir   = Math.random() < 0.5 ? 1 : -1;
+          const speed = 1.5 + Math.random() * 1.5;
+          const key   = PED_MODELS[pedIndex % 18];
+          pedIndex++;
+          const onLoad = mesh => {
+            mesh.scale.set(0.8, 0.8, 0.8);
+            mesh.position.set(pos, 0, track.fixedVal);
             const box = new THREE.Box3().setFromObject(mesh);
             mesh.position.y = -box.min.y;
-            mesh.traverse(ch => { if (ch.isMesh) ch.castShadow = true; });
-            const dir = rnd() < 0.5 ? 1 : -1;
             scene.add(mesh);
-            const { legL, legR } = _findPedLegs(mesh);
-            const ped = { mesh, track, pos, dir, speed: 0.8 + rnd(),
-                          lane, legL, legR, legPhase: Math.random() * Math.PI * 2 };
+            const ped = { mesh, track, pos, dir, speed };
             _pedSetRot(ped);
             peds.push(ped);
-          }, null, err => console.error('Erreur chargement piéton:', key, err));
+          };
+          _pedLoader.load(PED_BASE + key + '.glb', gltf => onLoad(gltf.scene), null, () => {
+            const fallback = new THREE.Mesh(
+              new THREE.CylinderGeometry(0.2, 0.2, 1.4, 8),
+              new THREE.MeshBasicMaterial({ color: _PED_COLORS[Math.floor(Math.random() * _PED_COLORS.length)] })
+            );
+            onLoad(fallback);
+          });
         }
       });
-    })(); */
+    })();
 
     // ════════════════════════════════════════
     //  VOITURE JOUEUR
@@ -1040,12 +1043,7 @@
         ped.pos = newPos;
         if (ped.track.walkAxis === 'x') ped.mesh.position.x = newPos;
         else                             ped.mesh.position.z = newPos;
-        // Oscillation jambes sinusoïdale sur les bones
-        ped.legPhase += dt * ped.speed * 3;
-        if (ped.legL) ped.legL.rotation.x =  Math.sin(ped.legPhase) * 0.45;
-        if (ped.legR) ped.legR.rotation.x = -Math.sin(ped.legPhase) * 0.45;
-        // Balancement latéral du corps
-        ped.mesh.rotation.z = Math.sin(Date.now() * 0.005 + ped.legPhase) * 0.1;
+        ped.mesh.children.forEach(ch => { ch.rotation.x = Math.sin(Date.now() * 0.005 + pi) * 0.3; });
       });
 
       // ── HUD vitesse (km/h) ──
