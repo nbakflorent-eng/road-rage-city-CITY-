@@ -412,6 +412,52 @@
     spawnBuildings();
 
     // ════════════════════════════════════════
+    //  BÂTIMENTS COINS EXTÉRIEURS
+    // ════════════════════════════════════════
+    (function spawnCornerBuildings() {
+      const _CPAL = [0xc0392b, 0x7f8c8d, 0x27ae60, 0xf39c12];
+      const _CORNERS = [[-80,-80],[80,-80],[-80,80],[80,80]];
+      const winGeo = new THREE.BoxGeometry(0.7, 0.9, 0.1);
+      const winMat = new THREE.MeshBasicMaterial({ color: 0xADD8E6 });
+      _CORNERS.forEach(([cx, cz]) => {
+        const n = 3 + Math.floor(Math.random() * 2);
+        for (let i = 0; i < n; i++) {
+          const bw = 5 + Math.random() * 3;
+          const bd = 5 + Math.random() * 3;
+          const bh = 4 + Math.random() * 6;
+          let bx, bz, ok = false;
+          for (let attempt = 0; attempt < 15; attempt++) {
+            bx = cx + (Math.random() * 14 - 7);
+            bz = cz + (Math.random() * 14 - 7);
+            if (RD_POS.every(r => Math.abs(bx - r) > RD_W / 2 + 10 && Math.abs(bz - r) > RD_W / 2 + 10)) { ok = true; break; }
+          }
+          if (!ok) continue;
+          const col = _CPAL[Math.floor(Math.random() * _CPAL.length)];
+          const grp = new THREE.Group();
+          const body = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), new THREE.MeshBasicMaterial({ color: col }));
+          body.position.y = bh / 2; grp.add(body);
+          const roof = new THREE.Mesh(new THREE.BoxGeometry(bw+0.3, 0.5, bd+0.3),
+            new THREE.MeshBasicMaterial({ color: new THREE.Color(col).multiplyScalar(0.65) }));
+          roof.position.y = bh + 0.25; grp.add(roof);
+          const wC = Math.max(2, Math.floor(bw / 3)), wR = Math.max(2, Math.floor(bh / 3));
+          for (let r = 0; r < wR; r++) {
+            const wy = 1.2 + (bh - 1.5) / (wR - 1 || 1) * r;
+            for (let c = 0; c < wC; c++) {
+              const wx = -bw/2 + bw/(wC+1)*(c+1), wz = -bd/2 + bd/(wC+1)*(c+1);
+              const wf = new THREE.Mesh(winGeo, winMat); wf.position.set(wx, wy, bd/2+0.05); grp.add(wf);
+              const wb = new THREE.Mesh(winGeo, winMat); wb.position.set(wx, wy, -bd/2-0.05); wb.rotation.y = Math.PI; grp.add(wb);
+              const wl = new THREE.Mesh(winGeo, winMat); wl.position.set(-bw/2-0.05, wy, wz); wl.rotation.y = -Math.PI/2; grp.add(wl);
+              const wr2 = new THREE.Mesh(winGeo, winMat); wr2.position.set(bw/2+0.05, wy, wz); wr2.rotation.y = Math.PI/2; grp.add(wr2);
+            }
+          }
+          grp.position.set(bx, 0, bz);
+          scene.add(grp);
+          buildingBounds.push({ x: bx, z: bz, hw: bw/2 + 0.4, hd: bd/2 + 0.4 });
+        }
+      });
+    })();
+
+    // ════════════════════════════════════════
     //  ARBRES GLB (alignés sur les trottoirs)
     // ════════════════════════════════════════
     const SW_MID   = RD_W / 2 + SW_W / 2; // 7.9 = centre trottoir depuis axe route
@@ -919,7 +965,7 @@
       } else if (rev) {
         carSpeed = Math.max(carSpeed - BRAKE * dt, -MAX_REV);
       } else {
-        carSpeed *= 0.97;
+        carSpeed *= 0.985;
         if (Math.abs(carSpeed) < 0.05) carSpeed = 0;
       }
 
@@ -972,30 +1018,32 @@
 
       // ── PNJ ──
       npcCars.forEach((npc, idx) => {
-        // Distance de sécurité 6u entre voitures
-        let carBlocked = false;
+        // Blocage : même route uniquement (même axis + même fixed)
+        let tooClose = false;
         for (let j = 0; j < npcCars.length; j++) {
           if (j === idx) continue;
           const o = npcCars[j];
-          const dx = npc.mesh.position.x - o.mesh.position.x;
-          const dz = npc.mesh.position.z - o.mesh.position.z;
-          if (dx*dx + dz*dz < 36) { carBlocked = true; break; } // distance² < 6²
+          if (o.route.axis !== npc.route.axis || o.route.fixed !== npc.route.fixed) continue;
+          const ahead = (o.t - npc.t) * npc.dir;
+          if (ahead > 0 && ahead < 8) { tooClose = true; break; }
         }
-        if (carBlocked) {
-          npc.blockedTime = (npc.blockedTime || 0) + dt;
-          if (npc.blockedTime >= 3) { // téléport après 3s de blocage
-            npc.t = (rnd() * 2 - 1) * NPC_BOUND;
-            npc.blockedTime = 0;
+        if (tooClose) {
+          npc.curSpeed = Math.max(0, (npc.curSpeed !== undefined ? npc.curSpeed : npc.speed) - npc.speed * dt * 3);
+          npc.stuckTimer = (npc.stuckTimer || 0) + dt;
+          if (npc.stuckTimer >= 3) {
+            npc.t = npc.dir > 0 ? -NPC_BOUND : NPC_BOUND;
+            npc.stuckTimer = 0; npc.curSpeed = npc.speed;
             if (npc.route.axis === 'x') npc.mesh.position.set(npc.t, 0, npc.route.fixed);
             else                         npc.mesh.position.set(npc.route.fixed, 0, npc.t);
           }
-          return;
+        } else {
+          npc.curSpeed = Math.min(npc.speed, (npc.curSpeed !== undefined ? npc.curSpeed : npc.speed) + npc.speed * dt * 2);
+          npc.stuckTimer = 0;
         }
-        npc.blockedTime = 0;
         // Arrêt aux intersections selon phase du feu
         if (RD_POS.some(r => Math.abs(npc.t - r) < 8) && Math.sin(Date.now() * 0.001 + idx) > 0) return;
-        // Position candidate (vitesse fixe 6-14 u/s, direction fixe)
-        const newT = npc.t + npc.dir * npc.speed * dt;
+        // Position candidate
+        const newT = npc.t + npc.dir * npc.curSpeed * dt;
         // Déplacement validé + rebouclage
         npc.t = newT;
         if (npc.t >  NPC_BOUND) npc.t -= NPC_BOUND * 2;
