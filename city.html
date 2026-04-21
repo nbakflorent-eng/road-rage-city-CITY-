@@ -43,19 +43,10 @@
       white-space: nowrap;
       text-shadow: 1px 1px 2px #000;
     }
-    #fullmap {
-      display: none;
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      border: 2px solid #fff;
-      z-index: 9999;
-    }
+
   </style>
 </head>
 <body>
-  <canvas id="fullmap" width="800" height="800"></canvas>
   <div id="mm-labels">
     <div>K = mini</div>
     <div>Y = moyen</div>
@@ -194,6 +185,24 @@
       [-1, 1].forEach(s =>
         makePlane(matSidewalk, rx + s * (RD_W / 2 + SW_W / 2), 0, SW_W, WORLD, 0.03)
       );
+    });
+
+    // ────────────────────────────────────────
+    //  ROUTES SECONDAIRES (décoratives, RD_W=7)
+    // ────────────────────────────────────────
+    const RD_SEC_H   = [-45, 5, 42];   // z des routes horizontales secondaires
+    const RD_SEC_V   = [-45, 5, 42];   // x des routes verticales secondaires
+    const RD_W_SEC   = 7;
+    const SW_W_SEC   = 1.5;
+    const matAspSec  = new THREE.MeshBasicMaterial({ color: 0x555555 });
+    const matSwSec   = new THREE.MeshBasicMaterial({ color: 0xBBBBBB });
+    RD_SEC_H.forEach(rz => {
+      makePlane(matAspSec, 0, rz, WORLD, RD_W_SEC, 0.015);
+      [-1, 1].forEach(s => makePlane(matSwSec, 0, rz + s*(RD_W_SEC/2 + SW_W_SEC/2), WORLD, SW_W_SEC, 0.02));
+    });
+    RD_SEC_V.forEach(rx => {
+      makePlane(matAspSec, rx, 0, RD_W_SEC, WORLD, 0.015);
+      [-1, 1].forEach(s => makePlane(matSwSec, rx + s*(RD_W_SEC/2 + SW_W_SEC/2), 0, SW_W_SEC, WORLD, 0.02));
     });
 
     // ────────────────────────────────────────
@@ -573,6 +582,52 @@
         grp.position.set(bx, 0, bz);
         scene.add(grp);
         buildingBounds.push({ x: bx, z: bz, hw: bw/2 + 0.4, hd: bd/2 + 0.4 });
+        placed++;
+      }
+    })();
+
+    // ════════════════════════════════════════
+    //  BÂTIMENTS VARIÉS (40 types sur toute la map)
+    // ════════════════════════════════════════
+    (function spawnVariedBuildings() {
+      const winMat = new THREE.MeshBasicMaterial({ color: 0xB3D9FF });
+      const winMatW = new THREE.MeshBasicMaterial({ color: 0xD0E8FF });
+      const TYPES = [
+        { name:'immeuble', bh:()=>12+Math.random()*10, bw:()=>8+Math.random()*4,  bd:()=>8+Math.random()*4,  cols:[0x6B7B8D,0x8B6F5E,0x9E9086], winH:0.9, winW:0.8 },
+        { name:'maison',   bh:()=>4+Math.random()*2,  bw:()=>7+Math.random()*3,  bd:()=>7+Math.random()*3,  cols:[0xD4A574,0xC17F5A,0xB8C4A8], winH:0.8, winW:0.7 },
+        { name:'magasin',  bh:()=>4+Math.random()*1,  bw:()=>10+Math.random()*4, bd:()=>7+Math.random()*3,  cols:[0x4A90D9,0xE8D5A3], winH:1.2, winW:1.4 },
+        { name:'sport',    bh:()=>6+Math.random()*2,  bw:()=>12+Math.random()*4, bd:()=>10+Math.random()*4, cols:[0x2C3E50,0x1A252F], winH:1.5, winW:1.5 },
+      ];
+      function _roadOK(bx, bz, hw, hd) {
+        if (!RD_POS.every(r => Math.abs(bx-r) > RD_W/2+hw+8 && Math.abs(bz-r) > RD_W/2+hd+8)) return false;
+        if (!RD_SEC_H.every(r => Math.abs(bz-r) > RD_W_SEC/2+hd+8)) return false;
+        if (!RD_SEC_V.every(r => Math.abs(bx-r) > RD_W_SEC/2+hw+8)) return false;
+        return true;
+      }
+      let placed = 0, tries = 0;
+      while (placed < 40 && tries++ < 1000) {
+        const T = TYPES[Math.floor(Math.random()*TYPES.length)];
+        const bw = T.bw(), bd = T.bd(), bh = T.bh();
+        const bx = -180 + Math.random()*360, bz = -180 + Math.random()*360;
+        if (!_roadOK(bx, bz, bw/2, bd/2)) continue;
+        if (buildingBounds.some(b => Math.abs(bx-b.x)<b.hw+bw/2+3 && Math.abs(bz-b.z)<b.hd+bd/2+3)) continue;
+        const col = T.cols[Math.floor(Math.random()*T.cols.length)];
+        const grp = new THREE.Group();
+        const body = new THREE.Mesh(new THREE.BoxGeometry(bw,bh,bd), new THREE.MeshBasicMaterial({color:col}));
+        body.position.y = bh/2; grp.add(body);
+        const roof = new THREE.Mesh(new THREE.BoxGeometry(bw+0.3,0.5,bd+0.3),
+          new THREE.MeshBasicMaterial({color:new THREE.Color(col).multiplyScalar(0.7)}));
+        roof.position.y = bh+0.25; grp.add(roof);
+        const wG = new THREE.BoxGeometry(T.winW, T.winH, 0.1);
+        const wC = Math.max(2, Math.floor(bw/(T.winW*1.8)));
+        const wR = Math.max(1, Math.floor(bh/(T.winH*2.5)));
+        for (let r=0;r<wR;r++) { const wy=1.2+(bh-1.5)/(wR-1||1)*r; for (let c=0;c<wC;c++) {
+          const wx=-bw/2+bw/(wC+1)*(c+1), wz2=-bd/2+bd/(wC+1)*(c+1);
+          const wf=new THREE.Mesh(wG,winMatW); wf.position.set(wx,wy,bd/2+0.05); grp.add(wf);
+          const wb=new THREE.Mesh(wG,winMatW); wb.position.set(wx,wy,-bd/2-0.05); wb.rotation.y=Math.PI; grp.add(wb);
+        }}
+        grp.position.set(bx,0,bz); scene.add(grp);
+        buildingBounds.push({x:bx,z:bz,hw:bw/2+0.4,hd:bd/2+0.4});
         placed++;
       }
     })();
@@ -1276,17 +1331,55 @@
       // Tracé itinéraire mission en jaune #FFD700 — inactif pour l'instant
     }
 
-    // ── Fullmap ──
-    const fmCanvas = document.getElementById('fullmap');
+    // ── Fullmap (canvas créé en JS et appendé au body) ──
+    const fmCanvas = document.createElement('canvas');
+    fmCanvas.width = 750; fmCanvas.height = 750;
+    Object.assign(fmCanvas.style, {
+      position:'fixed', top:'50%', left:'50%',
+      transform:'translate(-50%,-50%)', zIndex:'9999',
+      display:'none', background:'rgba(0,0,0,0.9)',
+      borderRadius:'12px', border:'2px solid white'
+    });
+    document.body.appendChild(fmCanvas);
     const fmCtx = fmCanvas.getContext('2d');
     let _fmVisible = false;
     function drawFullmap() {
-      const w = 800, h = 800, scale = w / WORLD;
+      const w = 750, h = 750, cx = w/2, cy = h/2, scale = w / WORLD;
       fmCtx.clearRect(0, 0, w, h);
-      fmCtx.fillStyle = 'rgba(0,0,0,0.85)'; fmCtx.fillRect(0, 0, w, h);
-      _drawMapContent(fmCtx, w, h, scale);
-      fmCtx.fillStyle = '#ffffff'; fmCtx.font = 'bold 14px Courier New';
-      fmCtx.fillText('CARTE — M pour fermer', 10, 22);
+      fmCtx.fillStyle = '#000'; fmCtx.fillRect(0, 0, w, h);
+      // Routes principales
+      fmCtx.strokeStyle = '#888'; fmCtx.lineWidth = 4;
+      RD_POS.forEach(r => {
+        const rp = r*scale+cx;
+        fmCtx.beginPath(); fmCtx.moveTo(0,rp); fmCtx.lineTo(w,rp); fmCtx.stroke();
+        fmCtx.beginPath(); fmCtx.moveTo(rp,0); fmCtx.lineTo(rp,h); fmCtx.stroke();
+      });
+      // Routes secondaires
+      fmCtx.strokeStyle = '#555'; fmCtx.lineWidth = 2;
+      RD_SEC_H.forEach(rz => { const rp=rz*scale+cy; fmCtx.beginPath(); fmCtx.moveTo(0,rp); fmCtx.lineTo(w,rp); fmCtx.stroke(); });
+      RD_SEC_V.forEach(rx => { const rp=rx*scale+cx; fmCtx.beginPath(); fmCtx.moveTo(rp,0); fmCtx.lineTo(rp,h); fmCtx.stroke(); });
+      // Bâtiments
+      fmCtx.fillStyle = '#8B7355';
+      buildingBounds.forEach(b => {
+        const mx=b.x*scale+cx, mz=b.z*scale+cy;
+        const bw=Math.max(2,b.hw*2*scale), bd=Math.max(2,b.hd*2*scale);
+        fmCtx.fillRect(mx-bw/2, mz-bd/2, bw, bd);
+      });
+      // PNJ blancs
+      fmCtx.fillStyle = '#ffffff';
+      npcCars.forEach(npc => {
+        const mx=npc.mesh.position.x*scale+cx, mz=npc.mesh.position.z*scale+cy;
+        fmCtx.beginPath(); fmCtx.arc(mx,mz,3,0,Math.PI*2); fmCtx.fill();
+      });
+      // Joueur triangle
+      const px=playerCar.position.x*scale+cx, pz=playerCar.position.z*scale+cy;
+      fmCtx.save(); fmCtx.translate(px,pz); fmCtx.rotate(-playerCar.rotation.y);
+      fmCtx.fillStyle='#FF0000';
+      fmCtx.beginPath(); fmCtx.moveTo(0,-10); fmCtx.lineTo(6,8); fmCtx.lineTo(-6,8); fmCtx.closePath(); fmCtx.fill();
+      fmCtx.restore();
+      // Texte
+      fmCtx.fillStyle='#fff'; fmCtx.font='bold 13px Courier New'; fmCtx.textAlign='center';
+      fmCtx.fillText('M = fermer', w/2, 22); fmCtx.textAlign='left';
     }
     function toggleFullmap() {
       _fmVisible = !_fmVisible;
