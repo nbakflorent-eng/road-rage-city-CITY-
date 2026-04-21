@@ -22,9 +22,20 @@
     #hud .label { opacity: 0.7; }
     #hud .value { font-weight: bold; font-size: 16px; }
     #speed-wrap { margin-top: 6px; }
+    #minimap {
+      position: fixed;
+      bottom: 16px;
+      left: 16px;
+      width: 160px;
+      height: 160px;
+      border-radius: 50%;
+      border: 2px solid #fff;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
+  <canvas id="minimap" width="160" height="160"></canvas>
   <div id="hud">
     <div class="label">ZQSD / WASD — conduire</div>
     <div id="speed-wrap">
@@ -458,6 +469,45 @@
     })();
 
     // ════════════════════════════════════════
+    //  BÂTIMENTS ZONES VIDES (25 supplémentaires)
+    // ════════════════════════════════════════
+    (function spawnExtraBuildings() {
+      const _EPAL = [0x8B7355, 0x9E9E9E, 0xD4B483, 0x7B8FA1, 0xA0785A];
+      const winGeo = new THREE.BoxGeometry(0.8, 1.0, 0.1);
+      const winMat = new THREE.MeshBasicMaterial({ color: 0xB3D9FF });
+      let placed = 0, tries = 0;
+      while (placed < 25 && tries++ < 600) {
+        const bw = 6 + Math.random() * 6;
+        const bd = 6 + Math.random() * 6;
+        const bh = 5 + Math.random() * 13;
+        const bx = -90 + Math.random() * 180;
+        const bz = -90 + Math.random() * 180;
+        if (!RD_POS.every(r => Math.abs(bx - r) > RD_W/2 + 9 && Math.abs(bz - r) > RD_W/2 + 9)) continue;
+        if (buildingBounds.some(b => Math.abs(bx - b.x) < b.hw + bw/2 + 3 && Math.abs(bz - b.z) < b.hd + bd/2 + 3)) continue;
+        const col = _EPAL[Math.floor(Math.random() * _EPAL.length)];
+        const grp = new THREE.Group();
+        const body = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), new THREE.MeshBasicMaterial({ color: col }));
+        body.position.y = bh / 2; grp.add(body);
+        const roof = new THREE.Mesh(new THREE.BoxGeometry(bw+0.3, 0.5, bd+0.3),
+          new THREE.MeshBasicMaterial({ color: new THREE.Color(col).multiplyScalar(0.65) }));
+        roof.position.y = bh + 0.25; grp.add(roof);
+        const wC = Math.max(2, Math.floor(bw / 4)), wR = Math.max(2, Math.floor(bh / 4));
+        for (let r = 0; r < wR; r++) {
+          const wy = 1.5 + (bh - 2) / (wR - 1 || 1) * r;
+          for (let c = 0; c < wC; c++) {
+            const wx = -bw/2 + bw/(wC+1)*(c+1), wz = -bd/2 + bd/(wC+1)*(c+1);
+            const wf = new THREE.Mesh(winGeo, winMat); wf.position.set(wx, wy, bd/2+0.05); grp.add(wf);
+            const wb = new THREE.Mesh(winGeo, winMat); wb.position.set(wx, wy, -bd/2-0.05); wb.rotation.y = Math.PI; grp.add(wb);
+          }
+        }
+        grp.position.set(bx, 0, bz);
+        scene.add(grp);
+        buildingBounds.push({ x: bx, z: bz, hw: bw/2 + 0.4, hd: bd/2 + 0.4 });
+        placed++;
+      }
+    })();
+
+    // ════════════════════════════════════════
     //  ARBRES GLB (alignés sur les trottoirs)
     // ════════════════════════════════════════
     const SW_MID   = RD_W / 2 + SW_W / 2; // 7.9 = centre trottoir depuis axe route
@@ -468,19 +518,23 @@
     ];
 
     (function _initTrees() {
-      const _RANGES = [[-95,-70],[-35,-25],[25,35],[70,95]];
+      const _RANGES = [[-90,-68],[-28,-15],[15,28],[68,90]];
       const _treePosQ = [];
-      while (_treePosQ.length < 15) {
+      let _tries = 0;
+      while (_treePosQ.length < 18 && _tries++ < 600) {
         const rx = _RANGES[Math.floor(Math.random() * _RANGES.length)];
         const rz = _RANGES[Math.floor(Math.random() * _RANGES.length)];
-        _treePosQ.push([rx[0] + Math.random()*(rx[1]-rx[0]), rz[0] + Math.random()*(rz[1]-rz[0])]);
+        const tx = rx[0] + Math.random()*(rx[1]-rx[0]);
+        const tz = rz[0] + Math.random()*(rz[1]-rz[0]);
+        if (RD_POS.every(r => Math.abs(tx - r) > 12 && Math.abs(tz - r) > 12))
+          _treePosQ.push([tx, tz]);
       }
       let arbreTmpl = null;
       function place() {
         if (!arbreTmpl) return;
         _treePosQ.forEach(([tx, tz]) => {
           const m = arbreTmpl.clone(true);
-          const s = 0.8 + Math.random() * 0.7;
+          const s = 0.9 + Math.random() * 0.7;
           m.rotation.set(0, Math.random() * Math.PI * 2, 0);
           m.scale.set(s, s, s);
           m.position.set(tx, 0, tz);
@@ -824,7 +878,7 @@
             const box = new THREE.Box3().setFromObject(mesh);
             mesh.position.y = -box.min.y;
             scene.add(mesh);
-            const ped = { mesh, track, pos, dir, speed };
+            const ped = { mesh, track, pos, dir, speed, baseY: mesh.position.y };
             _pedSetRot(ped);
             peds.push(ped);
           };
@@ -1025,19 +1079,19 @@
           const o = npcCars[j];
           if (o.route.axis !== npc.route.axis || o.route.fixed !== npc.route.fixed) continue;
           const ahead = (o.t - npc.t) * npc.dir;
-          if (ahead > 0 && ahead < 8) { tooClose = true; break; }
+          if (ahead > 0 && ahead < 10) { tooClose = true; break; }
         }
         if (tooClose) {
-          npc.curSpeed = Math.max(0, (npc.curSpeed !== undefined ? npc.curSpeed : npc.speed) - npc.speed * dt * 3);
+          npc.curSpeed = Math.max(0, (npc.curSpeed !== undefined ? npc.curSpeed : npc.speed) * 0.7);
           npc.stuckTimer = (npc.stuckTimer || 0) + dt;
           if (npc.stuckTimer >= 3) {
-            npc.t = npc.dir > 0 ? -NPC_BOUND : NPC_BOUND;
+            npc.t = npc.dir > 0 ? -80 : 80;
             npc.stuckTimer = 0; npc.curSpeed = npc.speed;
             if (npc.route.axis === 'x') npc.mesh.position.set(npc.t, 0, npc.route.fixed);
             else                         npc.mesh.position.set(npc.route.fixed, 0, npc.t);
           }
         } else {
-          npc.curSpeed = Math.min(npc.speed, (npc.curSpeed !== undefined ? npc.curSpeed : npc.speed) + npc.speed * dt * 2);
+          npc.curSpeed = Math.min(npc.speed, (npc.curSpeed !== undefined ? npc.curSpeed : npc.speed) * 1.2);
           npc.stuckTimer = 0;
         }
         // Arrêt aux intersections selon phase du feu
@@ -1085,10 +1139,11 @@
         if (ped.track.walkAxis === 'x') ped.mesh.position.x = newPos;
         else                             ped.mesh.position.z = newPos;
         const _t = Date.now() * 0.001, _c = ped.mesh.children;
-        if (_c.length > 0) _c[0].rotation.z =  Math.sin(_t * 4 + pi) * 0.5;
-        if (_c.length > 1) _c[1].rotation.z = -Math.sin(_t * 4 + pi) * 0.5;
-        if (_c.length > 2) _c[2].rotation.x =  Math.sin(_t * 4 + pi) * 0.6;
-        if (_c.length > 3) _c[3].rotation.x = -Math.sin(_t * 4 + pi) * 0.6;
+        ped.mesh.position.y = (ped.baseY || 0) + Math.abs(Math.sin(Date.now() * 0.006 + pi)) * 0.12;
+        if (_c.length > 0) _c[0].rotation.z =  Math.sin(_t * 5 + pi) * 0.45;
+        if (_c.length > 1) _c[1].rotation.z = -Math.sin(_t * 5 + pi) * 0.45;
+        if (_c.length > 2) _c[2].rotation.x =  Math.sin(_t * 5 + pi) * 0.55;
+        if (_c.length > 3) _c[3].rotation.x = -Math.sin(_t * 5 + pi) * 0.55;
       });
 
       // ── HUD vitesse (km/h) ──
@@ -1096,11 +1151,62 @@
         Math.abs(Math.round(carSpeed * 3.6));
     }
 
+    // ════════════════════════════════════════
+    //  MINIMAP
+    // ════════════════════════════════════════
+    const mmCanvas = document.getElementById('minimap');
+    const mmCtx = mmCanvas.getContext('2d');
+    const MM_S = 160 / WORLD; // px per world unit
+    function _mm(wx, wz) { return [wx * MM_S + 80, wz * MM_S + 80]; }
+
+    function drawMinimap() {
+      mmCtx.clearRect(0, 0, 160, 160);
+      mmCtx.save();
+      mmCtx.beginPath(); mmCtx.arc(80, 80, 79, 0, Math.PI * 2);
+      mmCtx.fillStyle = 'rgba(0,0,0,0.6)'; mmCtx.fill();
+      mmCtx.clip();
+      // Routes
+      mmCtx.fillStyle = '#555';
+      RD_POS.forEach(r => {
+        const rp = r * MM_S + 80, rw = RD_W * MM_S;
+        mmCtx.fillRect(0, rp - rw/2, 160, rw);
+        mmCtx.fillRect(rp - rw/2, 0, rw, 160);
+      });
+      // Bâtiments
+      mmCtx.fillStyle = '#C4A882';
+      buildingBounds.forEach(b => {
+        const [mx, mz] = _mm(b.x, b.z);
+        mmCtx.fillRect(mx - b.hw*MM_S, mz - b.hd*MM_S, b.hw*2*MM_S, b.hd*2*MM_S);
+      });
+      // Voitures PNJ
+      mmCtx.fillStyle = '#ffffff';
+      npcCars.forEach(npc => {
+        const [mx, mz] = _mm(npc.mesh.position.x, npc.mesh.position.z);
+        mmCtx.beginPath(); mmCtx.arc(mx, mz, 3, 0, Math.PI*2); mmCtx.fill();
+      });
+      // Piétons
+      mmCtx.fillStyle = '#00ffff';
+      peds.forEach(ped => {
+        const [mx, mz] = _mm(ped.mesh.position.x, ped.mesh.position.z);
+        mmCtx.beginPath(); mmCtx.arc(mx, mz, 2, 0, Math.PI*2); mmCtx.fill();
+      });
+      // Joueur rouge
+      const [px, pz] = _mm(playerCar.position.x, playerCar.position.z);
+      mmCtx.fillStyle = '#ff0000';
+      mmCtx.beginPath(); mmCtx.arc(px, pz, 5, 0, Math.PI*2); mmCtx.fill();
+      mmCtx.restore();
+    }
+
+    function drawMissionRoute(waypoints) {
+      // Tracé itinéraire mission en jaune — inactif pour l'instant
+    }
+
     function animate() {
       requestAnimationFrame(animate);
       const dt = Math.min(clock.getDelta(), 0.05);
       update(dt);
       renderer.render(scene, camera);
+      drawMinimap();
     }
     animate();
 
