@@ -507,7 +507,7 @@
     //  BORNES INCENDIE GLB
     // ════════════════════════════════════════
     const _hydrantPosQ = [
-      [-15, -35], [15, -35], [-35, 15], [-35, -15], [35, 15], [35, -15],
+      [-40, -30], [40, 30], [-30, 40], [30, -40], [-40, 30], [30, 40],
     ];
 
     _loadGLB('fire_hydrant_low_poly.glb', tmpl => {
@@ -914,9 +914,8 @@
       } else if (rev) {
         carSpeed = Math.max(carSpeed - BRAKE * dt, -MAX_REV);
       } else {
-        carSpeed *= 0.92;
-        if (Math.abs(carSpeed) < 0.01) carSpeed = 0;
-        if (carSpeed < 0) carSpeed = 0;
+        carSpeed *= 0.97;
+        if (Math.abs(carSpeed) < 0.05) carSpeed = 0;
       }
 
       // Braquage (proportionnel à la vitesse)
