@@ -50,13 +50,18 @@
       left: 50%;
       transform: translate(-50%, -50%);
       border: 2px solid #fff;
-      z-index: 100;
+      z-index: 9999;
     }
   </style>
 </head>
 <body>
   <canvas id="fullmap" width="800" height="800"></canvas>
-  <div id="mm-labels">K = mini | Y = moyen | I = grand | M = pleine carte</div>
+  <div id="mm-labels">
+    <div>K = mini</div>
+    <div>Y = moyen</div>
+    <div>I = grand</div>
+    <div>M = pleine carte</div>
+  </div>
   <canvas id="minimap" width="160" height="160"></canvas>
   <div id="hud">
     <div class="label">ZQSD / WASD — conduire</div>
@@ -943,8 +948,15 @@
             mesh.position.set(pos, 0, track.fixedVal);
             const box = new THREE.Box3().setFromObject(mesh);
             mesh.position.y = -box.min.y;
+            mesh.traverse(c => { if (c.isMesh) console.log('PED node:', c.name, c.parent && c.parent.name); });
             scene.add(mesh);
-            const ped = { mesh, track, pos, dir, speed, baseY: mesh.position.y };
+            const { legL, legR } = _findPedLegs(mesh);
+            const _kids = mesh.children;
+            const ped = {
+              mesh, track, pos, dir, speed, baseY: mesh.position.y,
+              legL: legL || (_kids[0] || null),
+              legR: legR || (_kids[1] || null)
+            };
             _pedSetRot(ped);
             peds.push(ped);
           };
@@ -1204,10 +1216,8 @@
         ped.pos = newPos;
         if (ped.track.walkAxis === 'x') ped.mesh.position.x = newPos;
         else                             ped.mesh.position.z = newPos;
-        ped.mesh.position.y = 0;
-        const _c = ped.mesh.children;
-        if (_c.length > 2) _c[2].rotation.x =  Math.sin(Date.now() * 0.005 + pi) * 0.4;
-        if (_c.length > 3) _c[3].rotation.x = -Math.sin(Date.now() * 0.005 + pi) * 0.4;
+        if (ped.legL) ped.legL.rotation.x =  Math.sin(Date.now() * 0.005 + pi) * 0.5;
+        if (ped.legR) ped.legR.rotation.x = -Math.sin(Date.now() * 0.005 + pi) * 0.5;
       });
 
       // ── HUD vitesse (km/h) ──
@@ -1238,13 +1248,6 @@
         const mx = b.x * scale + cx, mz = b.z * scale + cy;
         const bw = Math.max(2, b.hw*2*scale), bd = Math.max(2, b.hd*2*scale);
         ctx.fillRect(mx - bw/2, mz - bd/2, bw, bd);
-      });
-      // Voitures PNJ
-      ctx.fillStyle = '#ffffff';
-      npcCars.forEach(npc => {
-        const mx = npc.mesh.position.x * scale + cx;
-        const mz = npc.mesh.position.z * scale + cy;
-        ctx.beginPath(); ctx.arc(mx, mz, 2, 0, Math.PI*2); ctx.fill();
       });
       // Joueur — triangle directionnel
       const px = playerCar.position.x * scale + cx;
