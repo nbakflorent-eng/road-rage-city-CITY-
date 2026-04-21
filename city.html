@@ -765,7 +765,9 @@
       let pedIndex = 0;
       tracks8.forEach(track => {
         for (let i = 0; i < 3; i++) {
-          const pos   = -80 + Math.random() * 160;
+          let pos;
+          do { pos = -80 + Math.random() * 160; }
+          while (RD_POS.some(r => Math.abs(pos - r) < 7));
           const dir   = Math.random() < 0.5 ? 1 : -1;
           const speed = 1.5 + Math.random() * 1.5;
           const key   = PED_MODELS[pedIndex % 18];
@@ -1010,23 +1012,14 @@
       // ── Piétons PNJ ──
       peds.forEach((ped, pi) => {
         const px = ped.mesh.position.x, pz = ped.mesh.position.z;
-        // Proximité piéton–piéton (même trottoir, même lane) : ralentit ou s'arrête
-        let pedSlow = 1.0;
+        // Proximité piéton–piéton : demi-tour si < 2u
         for (let j = 0; j < peds.length; j++) {
           if (j === pi || peds[j].track !== ped.track) continue;
-          if (Math.abs((ped.lane || 0) - (peds[j].lane || 0)) > 0.3) continue;
           const dx = px - peds[j].mesh.position.x, dz = pz - peds[j].mesh.position.z;
-          const d2 = dx * dx + dz * dz;
-          if (d2 < 0.64) { pedSlow = 0; break; }        // < 0.8u : stop
-          if (d2 < 1.44) pedSlow = Math.min(pedSlow, 0.35); // < 1.2u : ralentit
+          if (dx*dx + dz*dz < 4) { ped.dir *= -1; _pedSetRot(ped); break; }
         }
-        if (pedSlow === 0) return;
-        // Proche d'une route : ralentit à 50%
-        const _nr = RD_POS.some(r => Math.abs(px - r) < RD_W / 2 + SW_W + 1) ||
-                    RD_POS.some(r => Math.abs(pz - r) < RD_W / 2 + SW_W + 1);
-        const sf = _nr ? 0.5 : 1.0;
         // Position candidate
-        const newPos = ped.pos + ped.dir * ped.speed * sf * pedSlow * dt;
+        const newPos = ped.pos + ped.dir * ped.speed * dt;
         const nx = ped.track.walkAxis === 'x' ? newPos : px;
         const nz = ped.track.walkAxis === 'x' ? pz     : newPos;
         // Bord du monde : demi-tour
@@ -1043,7 +1036,11 @@
         ped.pos = newPos;
         if (ped.track.walkAxis === 'x') ped.mesh.position.x = newPos;
         else                             ped.mesh.position.z = newPos;
-        ped.mesh.children.forEach(ch => { ch.rotation.x = Math.sin(Date.now() * 0.005 + pi) * 0.3; });
+        const _t = Date.now() * 0.001, _c = ped.mesh.children;
+        if (_c.length > 0) _c[0].rotation.z =  Math.sin(_t * 4 + pi) * 0.5;
+        if (_c.length > 1) _c[1].rotation.z = -Math.sin(_t * 4 + pi) * 0.5;
+        if (_c.length > 2) _c[2].rotation.x =  Math.sin(_t * 4 + pi) * 0.6;
+        if (_c.length > 3) _c[3].rotation.x = -Math.sin(_t * 4 + pi) * 0.6;
       });
 
       // ── HUD vitesse (km/h) ──
