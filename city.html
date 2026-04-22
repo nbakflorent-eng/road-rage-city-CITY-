@@ -43,41 +43,6 @@
       white-space: nowrap;
       text-shadow: 1px 1px 2px #000;
     }
-    #mapOverlay {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 700px;
-      height: 700px;
-      display: none;
-      z-index: 9999;
-      border: 3px solid rgba(255,255,255,0.8);
-      border-radius: 16px;
-      overflow: hidden;
-      background: transparent;
-    }
-    #mapCanvas { display: block; }
-    #mapPlayer {
-      position: absolute;
-      width: 0;
-      height: 0;
-      border-left: 6px solid transparent;
-      border-right: 6px solid transparent;
-      border-bottom: 14px solid #FF0000;
-      transform-origin: 6px 7px;
-      pointer-events: none;
-    }
-    #mapLabel {
-      position: absolute;
-      bottom: 8px;
-      left: 0; right: 0;
-      text-align: center;
-      color: #fff;
-      font: bold 13px 'Courier New', monospace;
-      pointer-events: none;
-      text-shadow: 1px 1px 3px #000;
-    }
 
   </style>
 </head>
@@ -89,11 +54,6 @@
     <div>M = pleine carte</div>
   </div>
   <canvas id="minimap" width="160" height="160"></canvas>
-  <div id="mapOverlay">
-    <canvas id="mapCanvas" width="700" height="700"></canvas>
-    <div id="mapPlayer"></div>
-    <div id="mapLabel">M = fermer &nbsp;|&nbsp; carte complète 3D</div>
-  </div>
   <div id="hud">
     <div class="label">ZQSD / WASD — conduire</div>
     <div id="speed-wrap">
@@ -137,24 +97,37 @@
     renderer.shadowMap.enabled = false;
     document.body.appendChild(renderer.domElement);
 
-    // ── Caméra carte orthographique (vue du dessus) ──
-    const mapCam = new THREE.OrthographicCamera(-200, 200, 200, -200, 0.1, 1000);
+    // ── Second renderer carte (vue du dessus) ──
+    const mapRenderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
+    mapRenderer.setSize(680, 680);
+    mapRenderer.setClearColor(0x000000, 0);
+
+    // ── Overlay div ──
+    const mapOverlay = document.createElement('div');
+    mapOverlay.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:680px;height:680px;display:none;z-index:9999;border-radius:14px;overflow:hidden;border:2px solid rgba(255,255,255,0.7);box-shadow:0 0 30px rgba(0,0,0,0.8)';
+    mapRenderer.domElement.style.cssText = 'position:absolute;top:0;left:0;';
+    mapOverlay.appendChild(mapRenderer.domElement);
+
+    // ── Canvas 2D triangle joueur ──
+    const mapTriangle = document.createElement('canvas');
+    mapTriangle.width = 680; mapTriangle.height = 680;
+    mapTriangle.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;';
+    mapOverlay.appendChild(mapTriangle);
+    const mapTriCtx = mapTriangle.getContext('2d');
+
+    // ── Label "M = fermer" ──
+    const mapLabel = document.createElement('div');
+    mapLabel.textContent = 'M = fermer';
+    mapLabel.style.cssText = 'position:absolute;top:8px;left:0;right:0;text-align:center;color:#fff;font:bold 13px Courier New,monospace;pointer-events:none;text-shadow:1px 1px 3px #000;';
+    mapOverlay.appendChild(mapLabel);
+
+    document.body.appendChild(mapOverlay);
+
+    // ── Caméra orthographique ──
+    const mapCam = new THREE.OrthographicCamera(-210, 210, 210, -210, 1, 600);
     mapCam.up.set(0, 0, -1);
-    mapCam.position.set(0, 500, 0);
+    mapCam.position.set(0, 300, 0);
     mapCam.lookAt(0, 0, 0);
-
-    // ── Second renderer dédié à la carte ──
-    const mapRenderer = new THREE.WebGLRenderer({
-      canvas: document.getElementById('mapCanvas'),
-      antialias: false,
-      alpha: true
-    });
-    mapRenderer.setPixelRatio(1);
-    mapRenderer.setSize(700, 700);
-
-    const mapOverlay = document.getElementById('mapOverlay');
-    const mapPlayer  = document.getElementById('mapPlayer');
-    const _MAP_SCALE = 700 / 400; // px par unité monde
 
     // ════════════════════════════════════════
     //  LUMIÈRES
@@ -1378,13 +1351,21 @@
       renderer.render(scene, camera);
       drawMinimap();
       if (mapOverlay.style.display !== 'none') {
+        mapCam.position.x = 0; mapCam.position.z = 0;
         mapRenderer.render(scene, mapCam);
-        // Marqueur joueur : position en px dans le div 700×700
-        const px = 350 + playerCar.position.x * _MAP_SCALE;
-        const pz = 350 + playerCar.position.z * _MAP_SCALE;
-        mapPlayer.style.left = (px - 6) + 'px';
-        mapPlayer.style.top  = (pz - 7) + 'px';
-        mapPlayer.style.transform = 'rotate(' + (-playerCar.rotation.y) + 'rad)';
+        // Triangle joueur sur canvas 2D superposé
+        mapTriCtx.clearRect(0, 0, 680, 680);
+        const px = (playerCar.position.x + 210) / 420 * 680;
+        const pz = (playerCar.position.z + 210) / 420 * 680;
+        mapTriCtx.save();
+        mapTriCtx.translate(px, pz);
+        mapTriCtx.rotate(playerCar.rotation.y);
+        mapTriCtx.beginPath();
+        mapTriCtx.moveTo(0, -10); mapTriCtx.lineTo(6, 8); mapTriCtx.lineTo(-6, 8);
+        mapTriCtx.closePath();
+        mapTriCtx.fillStyle = '#FF3300';
+        mapTriCtx.fill();
+        mapTriCtx.restore();
       }
     }
     animate();
