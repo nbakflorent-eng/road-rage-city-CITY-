@@ -99,7 +99,9 @@
 
     const _mapRenderer = new THREE.WebGLRenderer({antialias:false});
     _mapRenderer.setSize(660,660);
-    _mapRenderer.setClearColor(0xFF0000, 1);
+    _mapRenderer.setClearColor(0x1a1a2e, 1);
+    _mapRenderer.autoClear = true;
+    _mapRenderer.autoClearColor = true;
     const _mapCam = new THREE.OrthographicCamera(-220,220,220,-220,0.1,2000);
     _mapCam.up.set(0,0,-1);
     _mapCam.position.set(0,400,0);
@@ -1342,8 +1344,10 @@
       renderer.render(scene, camera);
       drawMinimap();
       if(typeof _mapDiv!=='undefined' && _mapDiv.style.display==='block'){
-        _mapCam.position.set(0,400,0);
+        _mapCam.position.set(0, 80, 0);
+        const _bg = scene.background; scene.background = new THREE.Color(0x1a1a2e);
         _mapRenderer.render(scene, _mapCam);
+        scene.background = _bg;
         _mapCtx.clearRect(0,0,660,660);
         const _px=(playerCar.position.x+220)/440*660;
         const _pz=(playerCar.position.z+220)/440*660;
