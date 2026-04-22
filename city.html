@@ -187,23 +187,6 @@
       );
     });
 
-    // ────────────────────────────────────────
-    //  ROUTES SECONDAIRES (décoratives, RD_W=7)
-    // ────────────────────────────────────────
-    const RD_SEC_H   = [-45, 5, 42];   // z des routes horizontales secondaires
-    const RD_SEC_V   = [-45, 5, 42];   // x des routes verticales secondaires
-    const RD_W_SEC   = 7;
-    const SW_W_SEC   = 1.5;
-    const matAspSec  = new THREE.MeshBasicMaterial({ color: 0x555555 });
-    const matSwSec   = new THREE.MeshBasicMaterial({ color: 0xBBBBBB });
-    RD_SEC_H.forEach(rz => {
-      makePlane(matAspSec, 0, rz, WORLD, RD_W_SEC, 0.015);
-      [-1, 1].forEach(s => makePlane(matSwSec, 0, rz + s*(RD_W_SEC/2 + SW_W_SEC/2), WORLD, SW_W_SEC, 0.02));
-    });
-    RD_SEC_V.forEach(rx => {
-      makePlane(matAspSec, rx, 0, RD_W_SEC, WORLD, 0.015);
-      [-1, 1].forEach(s => makePlane(matSwSec, rx + s*(RD_W_SEC/2 + SW_W_SEC/2), 0, SW_W_SEC, WORLD, 0.02));
-    });
 
     // ────────────────────────────────────────
     //  LIGNES JAUNES DISCONTINUES (axe centre)
@@ -376,28 +359,9 @@
       }
     }
 
-    // ── Zones de placement des bâtiments ──
-    // _INN  = bord intérieur (depuis trottoir côté centre)
-    // _EDGE = bord extérieur (depuis trottoir côté périphérie)
-    // Zones bâtiments générées dynamiquement depuis la grille de routes
-    const _worldEdge = WORLD / 2 - 5;
-    const _SW = RD_W / 2 + SW_W; // 9.3 = bord extérieur trottoir depuis centre route
-    const _rEdges = [-_worldEdge, ...RD_POS.flatMap(r => [r - _SW, r + _SW]), _worldEdge];
-    const _rZones = [];
-    for (let i = 0; i < _rEdges.length - 1; i += 2) _rZones.push([_rEdges[i], _rEdges[i + 1]]);
-    const _mid = Math.floor(_rZones.length / 2);
-    const BLDG_ZONES = [];
-    _rZones.forEach(([x1, x2], xi) => {
-      _rZones.forEach(([z1, z2], zi) => {
-        const d = Math.max(Math.abs(xi - _mid), Math.abs(zi - _mid));
-        const type = d === 0 ? 2 : d === 1 ? 1 : 0;
-        const step = type === 2 ? 11 : type === 1 ? 12 : 20;
-        BLDG_ZONES.push({ x1, x2, z1, z2, type, step });
-      });
-    });
-
-    // ── Bâtiments procéduraux réalistes ──
-    function spawnBuildings() {
+    // ── Bâtiments — NOUVEAU SYSTÈME (80 bâtiments, 4 types) ──
+    // (ancien spawnBuildings supprimé)
+    function spawnBuildings_DISABLED() { // kept for reference only
       const _BPAL = [0x8B6F5E, 0xB8A89A, 0x7A8C7E, 0x9E9086, 0xC4B49A, 0x6B7B8D];
       const _BLOCS = [[-40,-40],[0,-40],[40,-40],[-40,0],[40,0],[-40,40],[0,40],[40,40]];
       const winGeo = new THREE.BoxGeometry(0.8, 1.0, 0.1);
@@ -456,7 +420,7 @@
         }
       });
     }
-    spawnBuildings();
+    // spawnBuildings disabled — remplacé par spawnCornerBuildings / spawnExtraBuildings / spawnOuterBuildings / spawnVariedBuildings
 
     // ════════════════════════════════════════
     //  BÂTIMENTS COINS EXTÉRIEURS
@@ -599,10 +563,7 @@
         { name:'sport',    bh:()=>6+Math.random()*2,  bw:()=>12+Math.random()*4, bd:()=>10+Math.random()*4, cols:[0x2C3E50,0x1A252F], winH:1.5, winW:1.5 },
       ];
       function _roadOK(bx, bz, hw, hd) {
-        if (!RD_POS.every(r => Math.abs(bx-r) > RD_W/2+hw+8 && Math.abs(bz-r) > RD_W/2+hd+8)) return false;
-        if (!RD_SEC_H.every(r => Math.abs(bz-r) > RD_W_SEC/2+hd+8)) return false;
-        if (!RD_SEC_V.every(r => Math.abs(bx-r) > RD_W_SEC/2+hw+8)) return false;
-        return true;
+        return RD_POS.every(r => Math.abs(bx-r) > RD_W/2+hw+8 && Math.abs(bz-r) > RD_W/2+hd+8);
       }
       let placed = 0, tries = 0;
       while (placed < 40 && tries++ < 1000) {
@@ -1331,60 +1292,59 @@
       // Tracé itinéraire mission en jaune #FFD700 — inactif pour l'instant
     }
 
-    // ── Fullmap (canvas créé en JS et appendé au body) ──
-    const fmCanvas = document.createElement('canvas');
-    fmCanvas.width = 750; fmCanvas.height = 750;
-    Object.assign(fmCanvas.style, {
-      position:'fixed', top:'50%', left:'50%',
-      transform:'translate(-50%,-50%)', zIndex:'9999',
-      display:'none', background:'rgba(0,0,0,0.9)',
-      borderRadius:'12px', border:'2px solid white'
-    });
-    document.body.appendChild(fmCanvas);
-    const fmCtx = fmCanvas.getContext('2d');
-    let _fmVisible = false;
-    function drawFullmap() {
-      const w = 750, h = 750, cx = w/2, cy = h/2, scale = w / WORLD;
-      fmCtx.clearRect(0, 0, w, h);
-      fmCtx.fillStyle = '#000'; fmCtx.fillRect(0, 0, w, h);
+    // ── Fullmap ──
+    const fullmap = document.createElement('canvas');
+    fullmap.id = 'fullmap';
+    fullmap.width = 700;
+    fullmap.height = 700;
+    fullmap.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;display:none;border:2px solid white;border-radius:12px;background:#111';
+    document.body.appendChild(fullmap);
+
+    function drawFullMap() {
+      const ctx = fullmap.getContext('2d');
+      const w = 700, h = 700, cx = w/2, cy = h/2;
+      const scale = w / WORLD;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, w, h);
       // Routes principales
-      fmCtx.strokeStyle = '#888'; fmCtx.lineWidth = 4;
+      ctx.strokeStyle = '#888';
+      ctx.lineWidth = scale * RD_W;
       RD_POS.forEach(r => {
-        const rp = r*scale+cx;
-        fmCtx.beginPath(); fmCtx.moveTo(0,rp); fmCtx.lineTo(w,rp); fmCtx.stroke();
-        fmCtx.beginPath(); fmCtx.moveTo(rp,0); fmCtx.lineTo(rp,h); fmCtx.stroke();
+        const rp = r * scale + cx;
+        ctx.beginPath(); ctx.moveTo(0, rp); ctx.lineTo(w, rp); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(rp, 0); ctx.lineTo(rp, h); ctx.stroke();
       });
-      // Routes secondaires
-      fmCtx.strokeStyle = '#555'; fmCtx.lineWidth = 2;
-      RD_SEC_H.forEach(rz => { const rp=rz*scale+cy; fmCtx.beginPath(); fmCtx.moveTo(0,rp); fmCtx.lineTo(w,rp); fmCtx.stroke(); });
-      RD_SEC_V.forEach(rx => { const rp=rx*scale+cx; fmCtx.beginPath(); fmCtx.moveTo(rp,0); fmCtx.lineTo(rp,h); fmCtx.stroke(); });
       // Bâtiments
-      fmCtx.fillStyle = '#8B7355';
+      ctx.fillStyle = '#8B7355';
       buildingBounds.forEach(b => {
-        const mx=b.x*scale+cx, mz=b.z*scale+cy;
-        const bw=Math.max(2,b.hw*2*scale), bd=Math.max(2,b.hd*2*scale);
-        fmCtx.fillRect(mx-bw/2, mz-bd/2, bw, bd);
+        const mx = b.x * scale + cx, mz = b.z * scale + cy;
+        const bw = Math.max(2, b.hw * 2 * scale), bd = Math.max(2, b.hd * 2 * scale);
+        ctx.fillRect(mx - bw/2, mz - bd/2, bw, bd);
       });
       // PNJ blancs
-      fmCtx.fillStyle = '#ffffff';
+      ctx.fillStyle = '#ffffff';
       npcCars.forEach(npc => {
-        const mx=npc.mesh.position.x*scale+cx, mz=npc.mesh.position.z*scale+cy;
-        fmCtx.beginPath(); fmCtx.arc(mx,mz,3,0,Math.PI*2); fmCtx.fill();
+        const mx = npc.mesh.position.x * scale + cx;
+        const mz = npc.mesh.position.z * scale + cy;
+        ctx.beginPath(); ctx.arc(mx, mz, 3, 0, Math.PI*2); ctx.fill();
       });
-      // Joueur triangle
-      const px=playerCar.position.x*scale+cx, pz=playerCar.position.z*scale+cy;
-      fmCtx.save(); fmCtx.translate(px,pz); fmCtx.rotate(-playerCar.rotation.y);
-      fmCtx.fillStyle='#FF0000';
-      fmCtx.beginPath(); fmCtx.moveTo(0,-10); fmCtx.lineTo(6,8); fmCtx.lineTo(-6,8); fmCtx.closePath(); fmCtx.fill();
-      fmCtx.restore();
+      // Joueur triangle rouge
+      const px = playerCar.position.x * scale + cx;
+      const pz = playerCar.position.z * scale + cy;
+      ctx.save();
+      ctx.translate(px, pz);
+      ctx.rotate(-playerCar.rotation.y);
+      ctx.fillStyle = '#FF0000';
+      ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(6, 8); ctx.lineTo(-6, 8);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
       // Texte
-      fmCtx.fillStyle='#fff'; fmCtx.font='bold 13px Courier New'; fmCtx.textAlign='center';
-      fmCtx.fillText('M = fermer', w/2, 22); fmCtx.textAlign='left';
-    }
-    function toggleFullmap() {
-      _fmVisible = !_fmVisible;
-      fmCanvas.style.display = _fmVisible ? 'block' : 'none';
-      if (_fmVisible) drawFullmap();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 14px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('M = fermer | carte complète', w/2, 20);
+      ctx.textAlign = 'left';
     }
 
     // ── Touches minimap ──
@@ -1402,8 +1362,9 @@
         mmCanvas.width=400; mmCanvas.height=400;
         mmCanvas.style.width='400px'; mmCanvas.style.height='400px'; mmCanvas.style.borderRadius='50%';
         _mmLabels.style.bottom='424px';
-      } else if (e.code === 'KeyM') {
-        toggleFullmap();
+      } else if (e.key === 'm' || e.key === 'M') {
+        fullmap.style.display = fullmap.style.display === 'none' ? 'block' : 'none';
+        if (fullmap.style.display === 'block') drawFullMap();
       }
     });
 
