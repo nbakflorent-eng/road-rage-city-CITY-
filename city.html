@@ -97,37 +97,28 @@
     renderer.shadowMap.enabled = false;
     document.body.appendChild(renderer.domElement);
 
-    // ── Second renderer carte (vue du dessus) ──
-    const mapRenderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
-    mapRenderer.setSize(680, 680);
-    mapRenderer.setClearColor(0x000000, 0);
-
-    // ── Overlay div ──
-    const mapOverlay = document.createElement('div');
-    mapOverlay.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:680px;height:680px;display:none;z-index:9999;border-radius:14px;overflow:hidden;border:2px solid rgba(255,255,255,0.7);box-shadow:0 0 30px rgba(0,0,0,0.8)';
-    mapRenderer.domElement.style.cssText = 'position:absolute;top:0;left:0;';
-    mapOverlay.appendChild(mapRenderer.domElement);
-
-    // ── Canvas 2D triangle joueur ──
-    const mapTriangle = document.createElement('canvas');
-    mapTriangle.width = 680; mapTriangle.height = 680;
-    mapTriangle.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;';
-    mapOverlay.appendChild(mapTriangle);
-    const mapTriCtx = mapTriangle.getContext('2d');
-
-    // ── Label "M = fermer" ──
-    const mapLabel = document.createElement('div');
-    mapLabel.textContent = 'M = fermer';
-    mapLabel.style.cssText = 'position:absolute;top:8px;left:0;right:0;text-align:center;color:#fff;font:bold 13px Courier New,monospace;pointer-events:none;text-shadow:1px 1px 3px #000;';
-    mapOverlay.appendChild(mapLabel);
-
-    document.body.appendChild(mapOverlay);
-
-    // ── Caméra orthographique ──
-    const mapCam = new THREE.OrthographicCamera(-210, 210, 210, -210, 1, 600);
-    mapCam.up.set(0, 0, -1);
-    mapCam.position.set(0, 300, 0);
-    mapCam.lookAt(0, 0, 0);
+    const _mapRenderer = new THREE.WebGLRenderer({antialias:false});
+    _mapRenderer.setSize(660,660);
+    _mapRenderer.setClearColor(0xFF0000, 1);
+    const _mapCam = new THREE.OrthographicCamera(-220,220,220,-220,0.1,2000);
+    _mapCam.up.set(0,0,-1);
+    _mapCam.position.set(0,400,0);
+    _mapCam.lookAt(0,0,0);
+    _mapCam.layers.enableAll();
+    const _mapDiv = document.createElement('div');
+    _mapDiv.id='_mapDiv';
+    _mapDiv.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:660px;height:660px;display:none;z-index:1000000;border:3px solid white;border-radius:12px;overflow:hidden';
+    const _mapLabel = document.createElement('div');
+    _mapLabel.style.cssText='position:absolute;top:8px;left:50%;transform:translateX(-50%);color:white;font-size:13px;z-index:1000001;pointer-events:none;font-family:monospace';
+    _mapLabel.textContent='M = fermer';
+    const _mapTriCanvas = document.createElement('canvas');
+    _mapTriCanvas.width=660; _mapTriCanvas.height=660;
+    _mapTriCanvas.style.cssText='position:absolute;top:0;left:0;pointer-events:none;z-index:1000002';
+    _mapDiv.appendChild(_mapRenderer.domElement);
+    _mapDiv.appendChild(_mapLabel);
+    _mapDiv.appendChild(_mapTriCanvas);
+    document.body.appendChild(_mapDiv);
+    const _mapCtx = _mapTriCanvas.getContext('2d');
 
     // ════════════════════════════════════════
     //  LUMIÈRES
@@ -1340,7 +1331,7 @@
         mmCanvas.style.width='400px'; mmCanvas.style.height='400px'; mmCanvas.style.borderRadius='50%';
         _mmLabels.style.bottom='424px';
       } else if (e.key === 'm' || e.key === 'M') {
-        mapOverlay.style.display = mapOverlay.style.display === 'none' ? 'block' : 'none';
+        _mapDiv.style.display = _mapDiv.style.display === 'none' ? 'block' : 'none';
       }
     });
 
@@ -1350,22 +1341,23 @@
       update(dt);
       renderer.render(scene, camera);
       drawMinimap();
-      if (mapOverlay.style.display !== 'none') {
-        mapCam.position.x = 0; mapCam.position.z = 0;
-        mapRenderer.render(scene, mapCam);
-        // Triangle joueur sur canvas 2D superposé
-        mapTriCtx.clearRect(0, 0, 680, 680);
-        const px = (playerCar.position.x + 210) / 420 * 680;
-        const pz = (playerCar.position.z + 210) / 420 * 680;
-        mapTriCtx.save();
-        mapTriCtx.translate(px, pz);
-        mapTriCtx.rotate(playerCar.rotation.y);
-        mapTriCtx.beginPath();
-        mapTriCtx.moveTo(0, -10); mapTriCtx.lineTo(6, 8); mapTriCtx.lineTo(-6, 8);
-        mapTriCtx.closePath();
-        mapTriCtx.fillStyle = '#FF3300';
-        mapTriCtx.fill();
-        mapTriCtx.restore();
+      if(typeof _mapDiv!=='undefined' && _mapDiv.style.display==='block'){
+        _mapCam.position.set(0,400,0);
+        _mapRenderer.render(scene, _mapCam);
+        _mapCtx.clearRect(0,0,660,660);
+        const _px=(playerCar.position.x+220)/440*660;
+        const _pz=(playerCar.position.z+220)/440*660;
+        _mapCtx.save();
+        _mapCtx.translate(_px,_pz);
+        _mapCtx.rotate(playerCar.rotation.y);
+        _mapCtx.beginPath();
+        _mapCtx.moveTo(0,-11);
+        _mapCtx.lineTo(7,9);
+        _mapCtx.lineTo(-7,9);
+        _mapCtx.closePath();
+        _mapCtx.fillStyle='#FF3300';
+        _mapCtx.fill();
+        _mapCtx.restore();
       }
     }
     animate();
