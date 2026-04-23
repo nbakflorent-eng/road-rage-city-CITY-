@@ -627,6 +627,110 @@
     })();
 
     // ════════════════════════════════════════
+    //  SKYLINE DE BORDURE (4 côtés)
+    // ════════════════════════════════════════
+    (function spawnSkyline() {
+      const _SW   = new THREE.MeshBasicMaterial({ color: 0xC0C0C0, side: THREE.DoubleSide });
+      const _WIN  = new THREE.MeshBasicMaterial({ color: 0xFFFACD });
+      const _CHIM = new THREE.MeshBasicMaterial({ color: 0x333333 });
+      const _AWN  = new THREE.MeshBasicMaterial({ color: 0x8B2020 });
+      const _NC = [0x2C3E50,0x1a252f,0x34495E,0x2E4057,0x1B2631];
+      const _SC = [0xC17F5A,0xD4A574,0xB8906A,0xC9956A,0xBFA882];
+      const _ET = [0x4A5568,0x2D3748,0x3D4A5C,0x6B7280];
+      const _EC = [0xC8A876,0xD4B896,0xBD9C6A];
+      const _WC = [0x5C5C5C,0x4A4A4A,0x6B6B4E,0x3D3D3D,0x5A5A3D];
+      const _ALLEYS = [-120,-80,-40,0,40,80,120];
+      const _AHW = 3;
+
+      function _mkB(bx, bz, bw, bd, bh, col, rotY, side) {
+        const grp = new THREE.Group();
+        const body = new THREE.Mesh(new THREE.BoxGeometry(bw,bh,bd), new THREE.MeshBasicMaterial({color:col}));
+        body.position.y = bh/2; grp.add(body);
+        if (side === 'N') {
+          const gf = new THREE.Mesh(new THREE.BoxGeometry(bw,2.5,bd), new THREE.MeshBasicMaterial({color:0x111111}));
+          gf.position.y = 1.25; grp.add(gf);
+          const wG = new THREE.BoxGeometry(0.8,1.0,0.1);
+          const wCols = Math.max(2, Math.floor(bw/4));
+          const wRows = Math.max(2, Math.floor((bh-4)/4));
+          for (let r=0; r<wRows; r++) {
+            const wy = 4 + r * Math.max(1,(bh-5)/Math.max(wRows-1,1));
+            for (let c=0; c<wCols; c++) {
+              const wm = new THREE.Mesh(wG,_WIN);
+              wm.position.set(-bw/2+bw/(wCols+1)*(c+1), wy, bd/2+0.06); grp.add(wm);
+            }
+          }
+        } else if (side === 'S') {
+          const rc = new THREE.Color(col).multiplyScalar(0.7);
+          const rm = new THREE.Mesh(new THREE.BoxGeometry(bw+0.5,0.5,bd+0.5), new THREE.MeshBasicMaterial({color:rc.getHex()}));
+          rm.rotation.x = 0.3; rm.position.y = bh+0.3; grp.add(rm);
+        } else if (side === 'EC') {
+          const aw = new THREE.Mesh(new THREE.BoxGeometry(bw*0.75,0.15,1.5), _AWN);
+          aw.position.set(0, bh*0.5+0.8, bd/2+0.8); grp.add(aw);
+        } else if (side === 'W') {
+          const nC = ri(1,3);
+          for (let c=0; c<nC; c++) {
+            const chim = new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.3,3,8), _CHIM);
+            chim.position.set(rr(-bw*0.3,bw*0.3), bh+1.5, rr(-bd*0.3,bd*0.3)); grp.add(chim);
+          }
+        }
+        grp.rotation.y = rotY; grp.position.set(bx,0,bz); scene.add(grp);
+        const hw = (side==='N'||side==='S') ? bw/2+0.5 : bd/2+0.5;
+        const hd = (side==='N'||side==='S') ? bd/2+0.5 : bw/2+0.5;
+        buildingBounds.push({x:bx, z:bz, hw, hd});
+        // sidewalk strip toward city center
+        const swDist = bd/2+1.0;
+        let sx=bx, sz=bz, swW=bw, swH=2;
+        if (side==='N')  { sz = bz+swDist; }
+        else if (side==='S') { sz = bz-swDist; }
+        else if (side==='E'||side==='ET'||side==='EC') { sx = bx-swDist; swW=2; swH=bw; }
+        else { sx = bx+swDist; swW=2; swH=bw; }
+        const swM = new THREE.Mesh(new THREE.PlaneGeometry(swW,swH), _SW);
+        swM.rotation.x = -Math.PI/2; swM.position.set(sx,0.03,sz); scene.add(swM);
+      }
+
+      function _runRow(isHorz, fixedCoord, rowScale, side) {
+        let t = -182;
+        while (t < 182) {
+          const inA = _ALLEYS.find(a => Math.abs(t-a) < _AHW);
+          if (inA !== undefined) { t = inA+_AHW+0.1; continue; }
+          let bw, bd, bh, col, rotY, sk;
+          if (side==='N')      { bw=rr(10,16); bd=rr(10,16); bh=rr(45,80)*rowScale; col=_NC[ri(0,4)]; rotY=0; sk='N'; }
+          else if (side==='S') { bw=rr(7,10);  bd=rr(7,10);  bh=rr(5,9)*rowScale;   col=_SC[ri(0,4)]; rotY=Math.PI; sk='S'; }
+          else if (side==='E') {
+            if (rnd()<0.6) { bw=rr(10,14); bd=rr(10,14); bh=rr(18,35)*rowScale; col=_ET[ri(0,3)]; sk='ET'; }
+            else           { bw=rr(8,12);  bd=rr(8,12);  bh=rr(6,10)*rowScale;  col=_EC[ri(0,2)]; sk='EC'; }
+            rotY = -Math.PI/2;
+          } else { bw=rr(15,22); bd=rr(12,18); bh=rr(12,22)*rowScale; col=_WC[ri(0,4)]; rotY=Math.PI/2; sk='W'; }
+          const nextA = _ALLEYS.find(a => a-_AHW > t+0.1);
+          if (nextA !== undefined && t+bw > nextA-_AHW) bw = nextA-_AHW-t;
+          if (bw < 3) { t = (nextA !== undefined ? nextA+_AHW+0.1 : t+5); continue; }
+          let bx, bz;
+          if (isHorz) { bx=t+bw/2; bz=fixedCoord+(rowScale>1?rr(-3,3):0); }
+          else        { bx=fixedCoord+(rowScale>1?rr(-3,3):0); bz=t+bw/2; }
+          _mkB(bx, bz, bw, bd, bh, col, rotY, sk);
+          t += bw+0.5;
+        }
+        // T-blockers at alley entrances
+        const sign = fixedCoord>0 ? -1 : 1;
+        const bkMat = new THREE.MeshBasicMaterial({color:0x222222});
+        _ALLEYS.forEach(alley => {
+          if (isHorz) {
+            const bk = new THREE.Mesh(new THREE.BoxGeometry(_AHW*2,4,4), bkMat);
+            bk.position.set(alley, 2, fixedCoord+sign*13); scene.add(bk);
+          } else {
+            const bk = new THREE.Mesh(new THREE.BoxGeometry(4,4,_AHW*2), bkMat);
+            bk.position.set(fixedCoord+sign*13, 2, alley); scene.add(bk);
+          }
+        });
+      }
+
+      _runRow(true,  -110, 1.00, 'N'); _runRow(true,  -135, 1.15, 'N');
+      _runRow(true,   110, 1.00, 'S'); _runRow(true,   135, 1.15, 'S');
+      _runRow(false,  110, 1.00, 'E'); _runRow(false,  135, 1.15, 'E');
+      _runRow(false, -110, 1.00, 'W'); _runRow(false, -135, 1.15, 'W');
+    })();
+
+    // ════════════════════════════════════════
     //  ARBRES GLB (alignés sur les trottoirs)
     // ════════════════════════════════════════
     const SW_MID   = RD_W / 2 + SW_W / 2; // 7.9 = centre trottoir depuis axe route
@@ -727,7 +831,8 @@
     //  BORNES INCENDIE GLB
     // ════════════════════════════════════════
     const _hydrantPosQ = [
-      [-40, -30], [40, 30], [-30, 40], [30, -40], [-40, 30], [30, 40],
+      [-14,-27],[14,-27],[-27,14],[27,-14],[-14,27],[14,27],
+      [-27,-14],[27,14],[-50,-27],[50,27],[-27,-50],[27,50],
     ];
 
     _loadGLB('fire_hydrant_low_poly.glb', tmpl => {
@@ -736,6 +841,7 @@
       _hydrantPosQ.forEach(([hx, hz]) => {
         const m = tmpl.clone(true);
         m.scale.set(2.0, 2.0, 2.0);
+        m.rotation.y = Math.random() * Math.PI * 2;
         m.position.set(hx, 0, hz);
         const box = new THREE.Box3().setFromObject(m);
         m.position.y = -box.min.y;
@@ -744,99 +850,57 @@
     });
 
     // ════════════════════════════════════════
-    //  FEUX DE CIRCULATION
-    //  1 poteau par intersection (±28, ±28)
-    //  Sphères : rouge y=3, orange y=4, vert y=5
-    //  Cycle : rouge 5s → vert 5s → orange 1s
+    //  FEUX DE CIRCULATION — procéduraux v2
     // ════════════════════════════════════════
-
-    const _TL_POS = [];
-    RD_POS.forEach(rx => RD_POS.forEach(rz => {
-      _TL_POS.push({ x: rx + 8, z: rz + 8 });
-    }));
-    const _TL_DUR    = { red:5.0, green:5.0, orange:1.0 };
-    const _TL_NEXT   = { red:'green', green:'orange', orange:'red' };
-
-    // Couleurs RGB [0..1] pour identifier les meshes lumière dans le GLB
-    const _TL_COLORS = [
-      { phase:'red',    rgb:[0.8, 0.1, 0.1] },
-      { phase:'orange', rgb:[0.9, 0.5, 0.0] },
-      { phase:'green',  rgb:[0.1, 0.8, 0.1] },
-    ];
-    const _trafficLights = [];
-
-    function _applyTLPhase(tl) {
-      tl.lightMeshes.forEach((meshes, i) => {
-        const on = _TL_COLORS[i].phase === tl.phase;
-        meshes.forEach(m => { m.material.emissiveIntensity = on ? 1.0 : 0.05; });
-      });
-    }
+    const _TL2 = [];
+    const _TL2_DUR  = { red:5.0, green:5.0, orange:1.0 };
+    const _TL2_NEXT = { red:'green', green:'orange', orange:'red' };
+    const _TL2_COLS = {
+      red:    { on:0xFF2200, off:0x220000 },
+      orange: { on:0xFF8800, off:0x221100 },
+      green:  { on:0x00CC00, off:0x002200 },
+    };
 
     function _updateTrafficLights(dt) {
-      _trafficLights.forEach(tl => {
+      _TL2.forEach(tl => {
         tl.timer -= dt;
         if (tl.timer <= 0) {
-          tl.phase = _TL_NEXT[tl.phase];
-          tl.timer = _TL_DUR[tl.phase];
-          _applyTLPhase(tl);
+          tl.phase = _TL2_NEXT[tl.phase];
+          tl.timer = _TL2_DUR[tl.phase];
+          tl.matR.color.setHex(tl.phase==='red'    ? _TL2_COLS.red.on    : _TL2_COLS.red.off);
+          tl.matO.color.setHex(tl.phase==='orange' ? _TL2_COLS.orange.on : _TL2_COLS.orange.off);
+          tl.matG.color.setHex(tl.phase==='green'  ? _TL2_COLS.green.on  : _TL2_COLS.green.off);
         }
       });
     }
 
-    /* traffic_light_low_poly désactivé
-    _loadGLB('traffic_light_low_poly.glb', tmpl => {
-      if (!tmpl) return;
-      _TL_POS.forEach(({ x, z }, idx) => {
-        const clone = tmpl.clone(true);
-        clone.scale.set(3.0, 3.0, 3.0);
-        clone.position.set(x, 0, z);
-        const box = new THREE.Box3().setFromObject(clone);
-        clone.position.y = -box.min.y;
-        clone.traverse(ch => { if (ch.isMesh) ch.receiveShadow = false; });
-        scene.add(clone);
-        const lightMeshes = [[], [], []];
-        clone.traverse(obj => {
-          if (!obj.isMesh || !obj.material || !obj.material.color) return;
-          obj.material = obj.material.clone();
-          const { r, g, b } = obj.material.color;
-          _TL_COLORS.forEach(({ rgb }, ci) => {
-            if (Math.abs(r - rgb[0]) < 0.35 && Math.abs(g - rgb[1]) < 0.35 && Math.abs(b - rgb[2]) < 0.35)
-              lightMeshes[ci].push(obj);
-          });
-        });
-        const phase = idx % 2 === 0 ? 'red' : 'green';
-        const tl = { lightMeshes, phase, timer: _TL_DUR[phase] };
-        _trafficLights.push(tl);
-        _applyTLPhase(tl);
-      });
-    }); */
-
-    // ── Feux tricolores procéduraux (MeshBasicMaterial uniquement) ──
-    function spawnTrafficLights() {
-      const matPole   = new THREE.MeshBasicMaterial({ color: 0x333333 });
-      const matBox    = new THREE.MeshBasicMaterial({ color: 0x111111 });
-      const matRed    = new THREE.MeshBasicMaterial({ color: 0xff2200 });
-      const matOrange = new THREE.MeshBasicMaterial({ color: 0xff8800 });
-      const matGreen  = new THREE.MeshBasicMaterial({ color: 0x00cc00 });
-      RD_POS.forEach(rx => {
-        RD_POS.forEach(rz => {
+    (function _spawnTL2() {
+      const matPole = new THREE.MeshBasicMaterial({ color:0x444444 });
+      const matBox  = new THREE.MeshBasicMaterial({ color:0x111111 });
+      RD_POS.forEach((rx, i) => {
+        RD_POS.forEach((rz, j) => {
+          const phase = (i+j)%2===0 ? 'red' : 'green';
+          const matR = new THREE.MeshBasicMaterial({ color: _TL2_COLS.red[   phase==='red'   ?'on':'off'] });
+          const matO = new THREE.MeshBasicMaterial({ color: _TL2_COLS.orange['off'] });
+          const matG = new THREE.MeshBasicMaterial({ color: _TL2_COLS.green[ phase==='green' ?'on':'off'] });
           const grp = new THREE.Group();
-          const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 5, 8), matPole);
-          pole.position.set(0, 2.5, 0); grp.add(pole);
-          const box = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.8, 0.4), matBox);
-          box.position.set(0, 5.4, 0); grp.add(box);
-          const red = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), matRed);
-          red.position.set(0, 6.1, 0); grp.add(red);
-          const orange = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), matOrange);
-          orange.position.set(0, 5.4, 0); grp.add(orange);
-          const green = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), matGreen);
-          green.position.set(0, 4.7, 0); grp.add(green);
-          grp.position.set(rx + 9, 0, rz + 9);
+          const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.12,5,8), matPole);
+          pole.position.set(0,2.5,0); grp.add(pole);
+          const box = new THREE.Mesh(new THREE.BoxGeometry(0.6,1.8,0.4), matBox);
+          box.position.set(0,5.3,0); grp.add(box);
+          const sR = new THREE.Mesh(new THREE.SphereGeometry(0.2,8,8), matR);
+          sR.position.set(0,5.95,0); grp.add(sR);
+          const sO = new THREE.Mesh(new THREE.SphereGeometry(0.2,8,8), matO);
+          sO.position.set(0,5.35,0); grp.add(sO);
+          const sG = new THREE.Mesh(new THREE.SphereGeometry(0.2,8,8), matG);
+          sG.position.set(0,4.75,0); grp.add(sG);
+          grp.rotation.y = Math.PI/4;
+          grp.position.set(rx+7.5, 0, rz+7.5);
           scene.add(grp);
+          _TL2.push({ matR, matO, matG, phase, timer:_TL2_DUR[phase] });
         });
       });
-    }
-    spawnTrafficLights();
+    })();
 
     // ════════════════════════════════════════
     //  VOITURES PNJ — Kenney GLB chargés via URL relative
@@ -1292,8 +1356,8 @@
         ctx.beginPath(); ctx.moveTo(rp, 0); ctx.lineTo(rp, h); ctx.stroke();
       });
       // Bâtiments
-      ctx.fillStyle = '#8B7355';
       buildingBounds.forEach(b => {
+        ctx.fillStyle = (Math.abs(b.x)>90 || Math.abs(b.z)>90) ? '#555555' : '#8B7355';
         const mx = b.x * scale + cx, mz = b.z * scale + cy;
         const bw = Math.max(2, b.hw*2*scale), bd = Math.max(2, b.hd*2*scale);
         ctx.fillRect(mx - bw/2, mz - bd/2, bw, bd);
