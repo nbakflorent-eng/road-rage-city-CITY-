@@ -131,734 +131,216 @@
     }
 
     // ════════════════════════════════════════
-    //  LUMIÈRES
+    //  CONSTANTES
     // ════════════════════════════════════════
-    const sunLight = new THREE.DirectionalLight(0xfff8e7, 1.3);
-    sunLight.position.set(60, 100, 40);
-    sunLight.castShadow = true;
-    sunLight.shadow.mapSize.set(512, 512);
-    sunLight.shadow.camera.near   = 1;
-    sunLight.shadow.camera.far    = 300;
-    sunLight.shadow.camera.left   = -80;
-    sunLight.shadow.camera.right  =  80;
-    sunLight.shadow.camera.top    =  80;
-    sunLight.shadow.camera.bottom = -80;
-    scene.add(sunLight);
+    const BASE   = 'https://nbakflorent-eng.github.io/road-rage-city-CITY-/';
+    const TILE   = 12;
+    const buildingBounds = [];
+    const RD_POS = [-60, -20, 20, 60];
+    const RD_W   = 12;
+    const WORLD  = 400;
 
-    const ambientLight = new THREE.AmbientLight(0x8899bb, 0.65);
-    scene.add(ambientLight);
+    let _s = 31337;
+    function rnd() { _s = (_s * 1664525 + 1013904223) >>> 0; return _s / 4294967296; }
 
-    // ════════════════════════════════════════
-    //  CONSTANTES WORLD
-    // ════════════════════════════════════════
-    const WORLD    = 400;   // taille totale du sol
-    const RD_W     = 13;    // largeur route
-    const SW_W     = 2.8;   // largeur trottoir
-    const RD_POS   = [-60, -20, 20, 60]; // positions des axes (4H + 4V)
-    const NPC_BASE = 'https://nbakflorent-eng.github.io/road-rage-city-CITY-/';
-
-    // ════════════════════════════════════════
-    //  MATÉRIAUX
-    // ════════════════════════════════════════
-    const matGrass    = new THREE.MeshBasicMaterial({ color: 0x4a7c3f });
-    const matAsphalt  = new THREE.MeshBasicMaterial({ color: 0x2e2e2e });
-    const matSidewalk = new THREE.MeshBasicMaterial({ color: 0xc0bfba });
-    const matYellow   = new THREE.MeshBasicMaterial({ color: 0xf5c518 });
-    const matWhite    = new THREE.MeshBasicMaterial({ color: 0xffffff });
-
-    // ────────────────────────────────────────
-    //  SOL (herbe / asphalte de base)
-    // ────────────────────────────────────────
+    // ── Sol asphalte ──
     const groundMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(WORLD, WORLD),
-      matGrass
+      new THREE.PlaneGeometry(400, 400),
+      new THREE.MeshBasicMaterial({ color: 0x3d3d3d })
     );
     groundMesh.rotation.x = -Math.PI / 2;
-    groundMesh.receiveShadow = true;
+    groundMesh.position.y = -0.05;
     scene.add(groundMesh);
 
-    // ────────────────────────────────────────
-    //  Helpers de création de plans
-    // ────────────────────────────────────────
-    function makePlane(mat, x, z, w, d, y = 0.01) {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat);
-      m.rotation.x = -Math.PI / 2;
-      m.position.set(x, y, z);
-      m.receiveShadow = true;
-      scene.add(m);
-      return m;
+    // ── GLTFLoader ──
+    function _loadGLB(key, cb) {
+      const manager = new THREE.LoadingManager();
+      manager.setURLModifier(url => { const f = url.split('/').pop(); if (/^[0-9a-f-]{36}$/.test(f)) return url; return BASE + encodeURIComponent(f); });
+      const loader = new THREE.GLTFLoader(manager);
+      loader.load(BASE + key, g => {
+        if (g && g.scene) g.scene.traverse(c => { if (c.isMesh) { c.material.side = THREE.FrontSide; c.material.needsUpdate = true; } });
+        cb(g ? g.scene : null);
+      }, null, () => { console.warn('GLB manquant:', key); cb(null); });
     }
 
-    // ────────────────────────────────────────
-    //  ROUTES
-    //  2 horizontales (axe X, constante en Z)
-    //  2 verticales   (axe Z, constante en X)
-    // ────────────────────────────────────────
-    RD_POS.forEach(rz => makePlane(matAsphalt, 0,  rz, WORLD,  RD_W, 0.02)); // horiz
-    RD_POS.forEach(rx => makePlane(matAsphalt, rx, 0,  RD_W, WORLD,  0.02)); // vert
-
-    // ────────────────────────────────────────
-    //  INTERSECTIONS (carrés asphalte)
-    // ────────────────────────────────────────
-    RD_POS.forEach(rx =>
-      RD_POS.forEach(rz =>
-        makePlane(matAsphalt, rx, rz, RD_W, RD_W, 0.025)
-      )
-    );
-
-    // ────────────────────────────────────────
-    //  TROTTOIRS blancs
-    // ────────────────────────────────────────
-    RD_POS.forEach(rz => {
-      [-1, 1].forEach(s =>
-        makePlane(matSidewalk, 0, rz + s * (RD_W / 2 + SW_W / 2), WORLD, SW_W, 0.03)
-      );
-    });
-    RD_POS.forEach(rx => {
-      [-1, 1].forEach(s =>
-        makePlane(matSidewalk, rx + s * (RD_W / 2 + SW_W / 2), 0, SW_W, WORLD, 0.03)
-      );
-    });
-
-
-    // ────────────────────────────────────────
-    //  LIGNES JAUNES DISCONTINUES (axe centre)
-    // ────────────────────────────────────────
-    const DASH_L = 3.0;
-    const DASH_G = 2.8;
-    const DASH_W = 0.18;
-    const STEP   = DASH_L + DASH_G;
-
-    function makeDashes(axis, fixedCoord) {
-      const count = Math.floor(WORLD / STEP);
-      const start = -WORLD / 2 + DASH_L / 2;
-      for (let i = 0; i < count; i++) {
-        const t = start + i * STEP;
-        const bx = axis === 'x' ? DASH_L : DASH_W;
-        const bz = axis === 'x' ? DASH_W  : DASH_L;
-        const mesh = new THREE.Mesh(
-          new THREE.BoxGeometry(bx, 0.005, bz),
-          matYellow
-        );
-        mesh.position.set(
-          axis === 'x' ? t          : fixedCoord,
-          0.04,
-          axis === 'x' ? fixedCoord : t
-        );
-        scene.add(mesh);
-      }
-    }
-
-    RD_POS.forEach(rz => makeDashes('x', rz));
-    RD_POS.forEach(rx => makeDashes('z', rx));
-
     // ════════════════════════════════════════
-    //  DÉCOR URBAIN — BÂTIMENTS, ARBRES, LAMPADAIRES
+    //  ROUTES KENNEY GLB
     // ════════════════════════════════════════
-
-    // ── Pseudo-random déterministe (seed fixe → ville identique à chaque chargement) ──
-    let _s = 31337;
-    function rnd()    { _s = (_s * 1664525 + 1013904223) >>> 0; return _s / 4294967296; }
-    function rr(a, b) { return a + rnd() * (b - a); }
-    function ri(a, b) { return a + Math.floor(rnd() * (b - a + 1)); }
-
-    // ── Palette façades ──
-    const FACADE_PAL = [
-      0xd4c9a8, 0xbfc4c8, 0xf2f0ec, 0x9b8b7a,
-      0xb8c9d4, 0xc8b89a, 0xb0b8c0, 0xe0d5b5,
-      0x7a8c9a, 0xc4b090, 0xe8e0d4, 0xaab8a8,
-    ];
-
-    // ── Texture fenêtres (canvas par bâtiment) ──
-    function makeWinTex(cols, rows) {
-      const cw = 28, ch = 20;
-      const cv = document.createElement('canvas');
-      cv.width  = cols * cw;
-      cv.height = rows * ch;
-      const ctx = cv.getContext('2d');
-      ctx.fillStyle = '#5a5a5a';
-      ctx.fillRect(0, 0, cv.width, cv.height);
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          ctx.fillStyle = rnd() < 0.58 ? '#ffe898' : '#192231';
-          ctx.fillRect(c * cw + 3, r * ch + 3, cw - 6, ch - 6);
-        }
-      }
-      return new THREE.CanvasTexture(cv);
-    }
-
-    // ── Créer un bâtiment ──
-    // type 0 = résidentiel (1-2 ét.), 1 = commerce (3-5 ét.), 2 = downtown (10-30 ét.)
-    const buildingBounds = []; // AABB bâtiments pour collision joueur
-
-    function makeBuilding(x, z, type) {
-      let bw, bd, bh;
-      if      (type === 2) { bw = rr(7.5, 13); bd = rr(7.5, 13); bh = rr(30, 72); }
-      else if (type === 1) { bw = rr(7,   12); bd = rr(7,   12); bh = rr(9,  20); }
-      else                 { bw = rr(5,    9); bd = rr(5,    9); bh = rr(3.5, 7); }
-      buildingBounds.push({ x, z, hw: bw * 0.5 + 0.4, hd: bd * 0.5 + 0.4 });
-
-      const fc        = FACADE_PAL[ri(0, FACADE_PAL.length - 1)];
-      const facadeMat = new THREE.MeshBasicMaterial({ color: fc });
-      const roofMatB  = new THREE.MeshBasicMaterial({ color: 0x484848 });
-      const baseMat2  = new THREE.MeshBasicMaterial({ color: 0x383838 });
-
-      // Texture fenêtres proportionnelle aux dimensions
-      const winCols = Math.max(2, Math.round(bw / 2.5));
-      const winRows = Math.max(2, Math.round(bh / 3.8));
-      const winTex  = makeWinTex(winCols, winRows);
-      const winMat  = new THREE.MeshBasicMaterial({ map: winTex });
-
-      // Multi-matériaux BoxGeometry : [+X, -X, +Y, -Y, +Z, -Z]
-      // Fenêtres sur les 4 faces verticales, toit/base unis
-      const mats = [winMat, winMat, roofMatB, baseMat2, winMat, winMat];
-      const body = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), mats);
-      body.position.set(x, bh / 2, z);
-      body.castShadow    = true;
-      body.receiveShadow = true;
-      scene.add(body);
-
-      // — Acrotère (toit plat légèrement en saillie) —
-      const roofCap = new THREE.Mesh(
-        new THREE.BoxGeometry(bw + 0.4, 0.35, bd + 0.4),
-        new THREE.MeshBasicMaterial({ color: 0x555555 })
-      );
-      roofCap.position.set(x, bh + 0.18, z);
-      scene.add(roofCap);
-
-      // — Antenne —
-      if (rnd() > 0.42) {
-        const ah = rr(1.2, 4.0);
-        const ant = new THREE.Mesh(
-          new THREE.BoxGeometry(0.1, ah, 0.1),
-          new THREE.MeshBasicMaterial({ color: 0x222222 })
-        );
-        ant.position.set(
-          x + rr(-bw * 0.3, bw * 0.3),
-          bh + ah / 2 + 0.35,
-          z + rr(-bd * 0.3, bd * 0.3)
-        );
-        scene.add(ant);
-      }
-
-      // — Cheminée —
-      if (rnd() > 0.48) {
-        const chH = rr(0.7, 1.8);
-        const chim = new THREE.Mesh(
-          new THREE.BoxGeometry(0.78, chH, 0.78),
-          new THREE.MeshBasicMaterial({ color: 0x7a3f2e })
-        );
-        chim.position.set(
-          x + rr(-bw * 0.28, bw * 0.28),
-          bh + chH / 2 + 0.35,
-          z + rr(-bd * 0.28, bd * 0.28)
-        );
-        scene.add(chim);
-      }
-
-      // — Penthouse (bâtiments downtown seulement) —
-      if (type === 2 && rnd() > 0.5) {
-        const ph = rr(3, 8);
-        const pw = bw * rr(0.35, 0.6);
-        const pd = bd * rr(0.35, 0.6);
-        const penth = new THREE.Mesh(
-          new THREE.BoxGeometry(pw, ph, pd),
-          new THREE.MeshBasicMaterial({ color: fc })
-        );
-        penth.position.set(
-          x + rr(-bw * 0.1, bw * 0.1),
-          bh + ph / 2 + 0.35,
-          z + rr(-bd * 0.1, bd * 0.1)
-        );
-        penth.castShadow = true;
-        scene.add(penth);
-      }
-
-      // — Unités de climatisation (commerce/résidentiel) —
-      if (type < 2 && rnd() > 0.55) {
-        const n = ri(1, 3);
-        for (let k = 0; k < n; k++) {
-          const ac = new THREE.Mesh(
-            new THREE.BoxGeometry(rr(0.6, 1.1), rr(0.4, 0.7), rr(0.5, 0.9)),
-            new THREE.MeshBasicMaterial({ color: 0x9090a0 })
-          );
-          ac.position.set(
-            x + rr(-bw * 0.35, bw * 0.35),
-            bh + 0.4,
-            z + rr(-bd * 0.35, bd * 0.35)
-          );
-          scene.add(ac);
-        }
-      }
-    }
-
-    // ── Bâtiments — NOUVEAU SYSTÈME (80 bâtiments, 4 types) ──
-    // (ancien spawnBuildings supprimé)
-    function spawnBuildings_DISABLED() { // kept for reference only
-      const _BPAL = [0x8B6F5E, 0xB8A89A, 0x7A8C7E, 0x9E9086, 0xC4B49A, 0x6B7B8D];
-      const _BLOCS = [[-40,-40],[0,-40],[40,-40],[-40,0],[40,0],[-40,40],[0,40],[40,40]];
-      const winGeo = new THREE.BoxGeometry(0.8, 1.0, 0.1);
-      const winMat = new THREE.MeshBasicMaterial({ color: 0xADD8E6 });
-      _BLOCS.forEach(([cx, cz]) => {
-        const n = 4 + Math.floor(Math.random() * 2);
-        for (let i = 0; i < n; i++) {
-          const bw = 6 + Math.random() * 8;
-          const bd = 6 + Math.random() * 8;
-          const bh = 8 + Math.random() * 17;
-          let bx, bz, ok = false;
-          for (let attempt = 0; attempt < 10; attempt++) {
-            bx = cx + (Math.random() * 22 - 11);
-            bz = cz + (Math.random() * 22 - 11);
-            const clear = RD_POS.every(r =>
-              Math.abs(bx - r) > RD_W / 2 + bw / 2 + 2 &&
-              Math.abs(bz - r) > RD_W / 2 + bd / 2 + 2
-            );
-            if (clear) { ok = true; break; }
-          }
-          if (!ok) continue;
-          const col = _BPAL[Math.floor(Math.random() * _BPAL.length)];
-          const grp = new THREE.Group();
-          // Corps
-          const body = new THREE.Mesh(
-            new THREE.BoxGeometry(bw, bh, bd),
-            new THREE.MeshBasicMaterial({ color: col })
-          );
-          body.position.y = bh / 2;
-          grp.add(body);
-          // Toit (légèrement plus large, plus foncé)
-          const roofCol = new THREE.Color(col).multiplyScalar(0.65);
-          const roof = new THREE.Mesh(
-            new THREE.BoxGeometry(bw + 0.3, 0.5, bd + 0.3),
-            new THREE.MeshBasicMaterial({ color: roofCol })
-          );
-          roof.position.y = bh + 0.25;
-          grp.add(roof);
-          // Fenêtres sur 4 faces (grille régulière, offset 0.05 anti z-fight)
-          const wC = Math.min(3, Math.max(2, Math.floor(bw / 3)));
-          const wR = Math.min(4, Math.max(2, Math.floor(bh / 4)));
-          for (let r = 0; r < wR; r++) {
-            const wy = 1.5 + (bh - 2) / (wR - 1 || 1) * r;
-            for (let c = 0; c < wC; c++) {
-              const wx = -bw / 2 + bw / (wC + 1) * (c + 1);
-              const wz = -bd / 2 + bd / (wC + 1) * (c + 1);
-              const wf = new THREE.Mesh(winGeo, winMat); wf.position.set(wx, wy, bd/2+0.05); grp.add(wf);
-              const wb = new THREE.Mesh(winGeo, winMat); wb.position.set(wx, wy, -bd/2-0.05); wb.rotation.y = Math.PI; grp.add(wb);
-              const wl = new THREE.Mesh(winGeo, winMat); wl.position.set(-bw/2-0.05, wy, wz); wl.rotation.y = -Math.PI/2; grp.add(wl);
-              const wr = new THREE.Mesh(winGeo, winMat); wr.position.set(bw/2+0.05, wy, wz); wr.rotation.y = Math.PI/2; grp.add(wr);
-            }
-          }
-          grp.position.set(bx, 0, bz);
-          scene.add(grp);
-          buildingBounds.push({ x: bx, z: bz, hw: bw/2 + 0.4, hd: bd/2 + 0.4 });
-        }
-      });
-    }
-    // spawnBuildings disabled — remplacé par spawnCornerBuildings / spawnExtraBuildings / spawnOuterBuildings / spawnVariedBuildings
-
-    // ════════════════════════════════════════
-    //  BÂTIMENTS COINS EXTÉRIEURS
-    // ════════════════════════════════════════
-    (function spawnCornerBuildings() {
-      const _CPAL = [0x8B6F5E, 0xB8A89A, 0x7A8C7E, 0x9E9086, 0xC4B49A, 0x6B7B8D];
-      const _CORNERS = [[-80,-80],[80,-80],[-80,80],[80,80]];
-      const winGeo = new THREE.BoxGeometry(0.7, 0.9, 0.1);
-      const winMat = new THREE.MeshBasicMaterial({ color: 0xADD8E6 });
-      _CORNERS.forEach(([cx, cz]) => {
-        const n = 3 + Math.floor(Math.random() * 2);
-        for (let i = 0; i < n; i++) {
-          const bw = 5 + Math.random() * 3;
-          const bd = 5 + Math.random() * 3;
-          const bh = 4 + Math.random() * 6;
-          let bx, bz, ok = false;
-          for (let attempt = 0; attempt < 15; attempt++) {
-            bx = cx + (Math.random() * 14 - 7);
-            bz = cz + (Math.random() * 14 - 7);
-            if (RD_POS.every(r => Math.abs(bx - r) > RD_W / 2 + 10 && Math.abs(bz - r) > RD_W / 2 + 10)) { ok = true; break; }
-          }
-          if (!ok) continue;
-          const col = _CPAL[Math.floor(Math.random() * _CPAL.length)];
-          const grp = new THREE.Group();
-          const body = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), new THREE.MeshBasicMaterial({ color: col }));
-          body.position.y = bh / 2; grp.add(body);
-          const roof = new THREE.Mesh(new THREE.BoxGeometry(bw+0.3, 0.5, bd+0.3),
-            new THREE.MeshBasicMaterial({ color: new THREE.Color(col).multiplyScalar(0.65) }));
-          roof.position.y = bh + 0.25; grp.add(roof);
-          const wC = Math.max(2, Math.floor(bw / 3)), wR = Math.max(2, Math.floor(bh / 3));
-          for (let r = 0; r < wR; r++) {
-            const wy = 1.2 + (bh - 1.5) / (wR - 1 || 1) * r;
-            for (let c = 0; c < wC; c++) {
-              const wx = -bw/2 + bw/(wC+1)*(c+1), wz = -bd/2 + bd/(wC+1)*(c+1);
-              const wf = new THREE.Mesh(winGeo, winMat); wf.position.set(wx, wy, bd/2+0.05); grp.add(wf);
-              const wb = new THREE.Mesh(winGeo, winMat); wb.position.set(wx, wy, -bd/2-0.05); wb.rotation.y = Math.PI; grp.add(wb);
-              const wl = new THREE.Mesh(winGeo, winMat); wl.position.set(-bw/2-0.05, wy, wz); wl.rotation.y = -Math.PI/2; grp.add(wl);
-              const wr2 = new THREE.Mesh(winGeo, winMat); wr2.position.set(bw/2+0.05, wy, wz); wr2.rotation.y = Math.PI/2; grp.add(wr2);
-            }
-          }
-          grp.position.set(bx, 0, bz);
-          scene.add(grp);
-          buildingBounds.push({ x: bx, z: bz, hw: bw/2 + 0.4, hd: bd/2 + 0.4 });
-        }
-      });
-    })();
-
-    // ════════════════════════════════════════
-    //  BÂTIMENTS ZONES VIDES (25 supplémentaires)
-    // ════════════════════════════════════════
-    (function spawnExtraBuildings() {
-      const _EPAL = [0x8B6F5E, 0xB8A89A, 0x7A8C7E, 0x9E9086, 0xC4B49A, 0x6B7B8D];
-      const winGeo = new THREE.BoxGeometry(0.8, 1.0, 0.1);
-      const winMat = new THREE.MeshBasicMaterial({ color: 0xB3D9FF });
-      let placed = 0, tries = 0;
-      while (placed < 25 && tries++ < 600) {
-        const bw = 6 + Math.random() * 6;
-        const bd = 6 + Math.random() * 6;
-        const bh = 5 + Math.random() * 13;
-        const bx = -90 + Math.random() * 180;
-        const bz = -90 + Math.random() * 180;
-        if (!RD_POS.every(r => Math.abs(bx - r) > RD_W/2 + 9 && Math.abs(bz - r) > RD_W/2 + 9)) continue;
-        if (buildingBounds.some(b => Math.abs(bx - b.x) < b.hw + bw/2 + 3 && Math.abs(bz - b.z) < b.hd + bd/2 + 3)) continue;
-        const col = _EPAL[Math.floor(Math.random() * _EPAL.length)];
-        const grp = new THREE.Group();
-        const body = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), new THREE.MeshBasicMaterial({ color: col }));
-        body.position.y = bh / 2; grp.add(body);
-        const roof = new THREE.Mesh(new THREE.BoxGeometry(bw+0.3, 0.5, bd+0.3),
-          new THREE.MeshBasicMaterial({ color: new THREE.Color(col).multiplyScalar(0.65) }));
-        roof.position.y = bh + 0.25; grp.add(roof);
-        const wC = Math.max(2, Math.floor(bw / 4)), wR = Math.max(2, Math.floor(bh / 4));
-        for (let r = 0; r < wR; r++) {
-          const wy = 1.5 + (bh - 2) / (wR - 1 || 1) * r;
-          for (let c = 0; c < wC; c++) {
-            const wx = -bw/2 + bw/(wC+1)*(c+1), wz = -bd/2 + bd/(wC+1)*(c+1);
-            const wf = new THREE.Mesh(winGeo, winMat); wf.position.set(wx, wy, bd/2+0.05); grp.add(wf);
-            const wb = new THREE.Mesh(winGeo, winMat); wb.position.set(wx, wy, -bd/2-0.05); wb.rotation.y = Math.PI; grp.add(wb);
-          }
-        }
-        grp.position.set(bx, 0, bz);
-        scene.add(grp);
-        buildingBounds.push({ x: bx, z: bz, hw: bw/2 + 0.4, hd: bd/2 + 0.4 });
-        placed++;
-      }
-    })();
-
-    // ════════════════════════════════════════
-    //  BÂTIMENTS ZONES EXTÉRIEURES (30 outer)
-    // ════════════════════════════════════════
-    (function spawnOuterBuildings() {
-      const _OPAL = [0x8B6F5E, 0xB8A89A, 0x7A8C7E, 0x9E9086, 0xC4B49A, 0x6B7B8D];
-      const winGeo = new THREE.BoxGeometry(0.8, 1.0, 0.1);
-      const winMat = new THREE.MeshBasicMaterial({ color: 0xB3D9FF });
-      let placed = 0, tries = 0;
-      while (placed < 30 && tries++ < 800) {
-        const bw = 5 + Math.random() * 6, bd = 5 + Math.random() * 6, bh = 6 + Math.random() * 14;
-        let bx, bz;
-        if (Math.random() < 0.5) {
-          bx = (Math.random() < 0.5 ? -1 : 1) * (65 + Math.random() * 30);
-          bz = -90 + Math.random() * 180;
-        } else {
-          bx = -90 + Math.random() * 180;
-          bz = (Math.random() < 0.5 ? -1 : 1) * (65 + Math.random() * 30);
-        }
-        if (!RD_POS.every(r => Math.abs(bx - r) > RD_W/2 + 9 && Math.abs(bz - r) > RD_W/2 + 9)) continue;
-        if (buildingBounds.some(b => Math.abs(bx - b.x) < b.hw + bw/2 + 3 && Math.abs(bz - b.z) < b.hd + bd/2 + 3)) continue;
-        const col = _OPAL[Math.floor(Math.random() * _OPAL.length)];
-        const grp = new THREE.Group();
-        const body = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), new THREE.MeshBasicMaterial({ color: col }));
-        body.position.y = bh / 2; grp.add(body);
-        const roof = new THREE.Mesh(new THREE.BoxGeometry(bw+0.3, 0.5, bd+0.3),
-          new THREE.MeshBasicMaterial({ color: new THREE.Color(col).multiplyScalar(0.65) }));
-        roof.position.y = bh + 0.25; grp.add(roof);
-        const wC = Math.max(2, Math.floor(bw / 4)), wR = Math.max(2, Math.floor(bh / 4));
-        for (let r = 0; r < wR; r++) {
-          const wy = 1.5 + (bh - 2) / (wR - 1 || 1) * r;
-          for (let c = 0; c < wC; c++) {
-            const wx = -bw/2 + bw/(wC+1)*(c+1), wz2 = -bd/2 + bd/(wC+1)*(c+1);
-            const wf = new THREE.Mesh(winGeo, winMat); wf.position.set(wx, wy, bd/2+0.05); grp.add(wf);
-            const wb = new THREE.Mesh(winGeo, winMat); wb.position.set(wx, wy, -bd/2-0.05); wb.rotation.y = Math.PI; grp.add(wb);
-          }
-        }
-        grp.position.set(bx, 0, bz);
-        scene.add(grp);
-        buildingBounds.push({ x: bx, z: bz, hw: bw/2 + 0.4, hd: bd/2 + 0.4 });
-        placed++;
-      }
-    })();
-
-    // ════════════════════════════════════════
-    //  BÂTIMENTS VARIÉS (40 types sur toute la map)
-    // ════════════════════════════════════════
-    (function spawnVariedBuildings() {
-      const winMat = new THREE.MeshBasicMaterial({ color: 0xB3D9FF });
-      const winMatW = new THREE.MeshBasicMaterial({ color: 0xD0E8FF });
-      const TYPES = [
-        { name:'immeuble', bh:()=>12+Math.random()*10, bw:()=>8+Math.random()*4,  bd:()=>8+Math.random()*4,  cols:[0x6B7B8D,0x8B6F5E,0x9E9086], winH:0.9, winW:0.8 },
-        { name:'maison',   bh:()=>4+Math.random()*2,  bw:()=>7+Math.random()*3,  bd:()=>7+Math.random()*3,  cols:[0xD4A574,0xC17F5A,0xB8C4A8], winH:0.8, winW:0.7 },
-        { name:'magasin',  bh:()=>4+Math.random()*1,  bw:()=>10+Math.random()*4, bd:()=>7+Math.random()*3,  cols:[0x4A90D9,0xE8D5A3], winH:1.2, winW:1.4 },
-        { name:'sport',    bh:()=>6+Math.random()*2,  bw:()=>12+Math.random()*4, bd:()=>10+Math.random()*4, cols:[0x2C3E50,0x1A252F], winH:1.5, winW:1.5 },
-      ];
-      function _roadOK(bx, bz, hw, hd) {
-        return RD_POS.every(r => Math.abs(bx-r) > RD_W/2+hw+8 && Math.abs(bz-r) > RD_W/2+hd+8);
-      }
-      let placed = 0, tries = 0;
-      while (placed < 40 && tries++ < 1000) {
-        const T = TYPES[Math.floor(Math.random()*TYPES.length)];
-        const bw = T.bw(), bd = T.bd(), bh = T.bh();
-        const bx = -180 + Math.random()*360, bz = -180 + Math.random()*360;
-        if (!_roadOK(bx, bz, bw/2, bd/2)) continue;
-        if (buildingBounds.some(b => Math.abs(bx-b.x)<b.hw+bw/2+3 && Math.abs(bz-b.z)<b.hd+bd/2+3)) continue;
-        const col = T.cols[Math.floor(Math.random()*T.cols.length)];
-        const grp = new THREE.Group();
-        const body = new THREE.Mesh(new THREE.BoxGeometry(bw,bh,bd), new THREE.MeshBasicMaterial({color:col}));
-        body.position.y = bh/2; grp.add(body);
-        const roof = new THREE.Mesh(new THREE.BoxGeometry(bw+0.3,0.5,bd+0.3),
-          new THREE.MeshBasicMaterial({color:new THREE.Color(col).multiplyScalar(0.7)}));
-        roof.position.y = bh+0.25; grp.add(roof);
-        const wG = new THREE.BoxGeometry(T.winW, T.winH, 0.1);
-        const wC = Math.max(2, Math.floor(bw/(T.winW*1.8)));
-        const wR = Math.max(1, Math.floor(bh/(T.winH*2.5)));
-        for (let r=0;r<wR;r++) { const wy=1.2+(bh-1.5)/(wR-1||1)*r; for (let c=0;c<wC;c++) {
-          const wx=-bw/2+bw/(wC+1)*(c+1), wz2=-bd/2+bd/(wC+1)*(c+1);
-          const wf=new THREE.Mesh(wG,winMatW); wf.position.set(wx,wy,bd/2+0.05); grp.add(wf);
-          const wb=new THREE.Mesh(wG,winMatW); wb.position.set(wx,wy,-bd/2-0.05); wb.rotation.y=Math.PI; grp.add(wb);
-        }}
-        grp.position.set(bx,0,bz); scene.add(grp);
-        buildingBounds.push({x:bx,z:bz,hw:bw/2+0.4,hd:bd/2+0.4});
-        placed++;
-      }
-    })();
-
-    // ════════════════════════════════════════
-    //  SKYLINE DE BORDURE (4 côtés)
-    // ════════════════════════════════════════
-    (function spawnSkyline() {
-      const _SW   = new THREE.MeshBasicMaterial({ color: 0xC0C0C0, side: THREE.DoubleSide });
-      const _WIN  = new THREE.MeshBasicMaterial({ color: 0xFFFACD });
-      const _CHIM = new THREE.MeshBasicMaterial({ color: 0x333333 });
-      const _AWN  = new THREE.MeshBasicMaterial({ color: 0x8B2020 });
-      const _NC = [0x2C3E50,0x1a252f,0x34495E,0x2E4057,0x1B2631];
-      const _SC = [0xC17F5A,0xD4A574,0xB8906A,0xC9956A,0xBFA882];
-      const _ET = [0x4A5568,0x2D3748,0x3D4A5C,0x6B7280];
-      const _EC = [0xC8A876,0xD4B896,0xBD9C6A];
-      const _WC = [0x5C5C5C,0x4A4A4A,0x6B6B4E,0x3D3D3D,0x5A5A3D];
-      const _ALLEYS = [-120,-80,-40,0,40,80,120];
-      const _AHW = 3;
-
-      function _mkB(bx, bz, bw, bd, bh, col, rotY, side) {
-        const grp = new THREE.Group();
-        const body = new THREE.Mesh(new THREE.BoxGeometry(bw,bh,bd), new THREE.MeshBasicMaterial({color:col}));
-        body.position.y = bh/2; grp.add(body);
-        if (side === 'N') {
-          const gf = new THREE.Mesh(new THREE.BoxGeometry(bw,2.5,bd), new THREE.MeshBasicMaterial({color:0x111111}));
-          gf.position.y = 1.25; grp.add(gf);
-          const wG = new THREE.BoxGeometry(0.8,1.0,0.1);
-          const wCols = Math.max(2, Math.floor(bw/4));
-          const wRows = Math.max(2, Math.floor((bh-4)/4));
-          for (let r=0; r<wRows; r++) {
-            const wy = 4 + r * Math.max(1,(bh-5)/Math.max(wRows-1,1));
-            for (let c=0; c<wCols; c++) {
-              const wm = new THREE.Mesh(wG,_WIN);
-              wm.position.set(-bw/2+bw/(wCols+1)*(c+1), wy, bd/2+0.06); grp.add(wm);
-            }
-          }
-        } else if (side === 'S') {
-          const rc = new THREE.Color(col).multiplyScalar(0.7);
-          const rm = new THREE.Mesh(new THREE.BoxGeometry(bw+0.5,0.5,bd+0.5), new THREE.MeshBasicMaterial({color:rc.getHex()}));
-          rm.rotation.x = 0.3; rm.position.y = bh+0.3; grp.add(rm);
-        } else if (side === 'EC') {
-          const aw = new THREE.Mesh(new THREE.BoxGeometry(bw*0.75,0.15,1.5), _AWN);
-          aw.position.set(0, bh*0.5+0.8, bd/2+0.8); grp.add(aw);
-        } else if (side === 'W') {
-          const nC = ri(1,3);
-          for (let c=0; c<nC; c++) {
-            const chim = new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.3,3,8), _CHIM);
-            chim.position.set(rr(-bw*0.3,bw*0.3), bh+1.5, rr(-bd*0.3,bd*0.3)); grp.add(chim);
-          }
-        }
-        grp.rotation.y = rotY; grp.position.set(bx,0,bz); scene.add(grp);
-        const hw = (side==='N'||side==='S') ? bw/2+0.5 : bd/2+0.5;
-        const hd = (side==='N'||side==='S') ? bd/2+0.5 : bw/2+0.5;
-        buildingBounds.push({x:bx, z:bz, hw, hd});
-        // sidewalk strip toward city center
-        const swDist = bd/2+1.0;
-        let sx=bx, sz=bz, swW=bw, swH=2;
-        if (side==='N')  { sz = bz+swDist; }
-        else if (side==='S') { sz = bz-swDist; }
-        else if (side==='E'||side==='ET'||side==='EC') { sx = bx-swDist; swW=2; swH=bw; }
-        else { sx = bx+swDist; swW=2; swH=bw; }
-        const swM = new THREE.Mesh(new THREE.PlaneGeometry(swW,swH), _SW);
-        swM.rotation.x = -Math.PI/2; swM.position.set(sx,0.03,sz); scene.add(swM);
-      }
-
-      function _runRow(isHorz, fixedCoord, rowScale, side) {
-        let t = -182;
-        while (t < 182) {
-          const inA = _ALLEYS.find(a => Math.abs(t-a) < _AHW);
-          if (inA !== undefined) { t = inA+_AHW+0.1; continue; }
-          let bw, bd, bh, col, rotY, sk;
-          if (side==='N')      { bw=rr(10,16); bd=rr(10,16); bh=rr(45,80)*rowScale; col=_NC[ri(0,4)]; rotY=0; sk='N'; }
-          else if (side==='S') { bw=rr(7,10);  bd=rr(7,10);  bh=rr(5,9)*rowScale;   col=_SC[ri(0,4)]; rotY=Math.PI; sk='S'; }
-          else if (side==='E') {
-            if (rnd()<0.6) { bw=rr(10,14); bd=rr(10,14); bh=rr(18,35)*rowScale; col=_ET[ri(0,3)]; sk='ET'; }
-            else           { bw=rr(8,12);  bd=rr(8,12);  bh=rr(6,10)*rowScale;  col=_EC[ri(0,2)]; sk='EC'; }
-            rotY = -Math.PI/2;
-          } else { bw=rr(15,22); bd=rr(12,18); bh=rr(12,22)*rowScale; col=_WC[ri(0,4)]; rotY=Math.PI/2; sk='W'; }
-          const nextA = _ALLEYS.find(a => a-_AHW > t+0.1);
-          if (nextA !== undefined && t+bw > nextA-_AHW) bw = nextA-_AHW-t;
-          if (bw < 3) { t = (nextA !== undefined ? nextA+_AHW+0.1 : t+5); continue; }
-          let bx, bz;
-          if (isHorz) { bx=t+bw/2; bz=fixedCoord+(rowScale>1?rr(-3,3):0); }
-          else        { bx=fixedCoord+(rowScale>1?rr(-3,3):0); bz=t+bw/2; }
-          _mkB(bx, bz, bw, bd, bh, col, rotY, sk);
-          t += bw+0.5;
-        }
-        // T-blockers at alley entrances
-        const sign = fixedCoord>0 ? -1 : 1;
-        const bkMat = new THREE.MeshBasicMaterial({color:0x222222});
-        _ALLEYS.forEach(alley => {
-          if (isHorz) {
-            const bk = new THREE.Mesh(new THREE.BoxGeometry(_AHW*2,4,4), bkMat);
-            bk.position.set(alley, 2, fixedCoord+sign*13); scene.add(bk);
-          } else {
-            const bk = new THREE.Mesh(new THREE.BoxGeometry(4,4,_AHW*2), bkMat);
-            bk.position.set(fixedCoord+sign*13, 2, alley); scene.add(bk);
-          }
+    function buildRoads() {
+      function _tile(key, x, z, rotY, scl) {
+        _loadGLB(key, g => {
+          if (!g) return;
+          g.scale.setScalar(scl || 6);
+          g.position.set(x, 0, z);
+          if (rotY) g.rotation.y = rotY;
+          const box = new THREE.Box3().setFromObject(g);
+          g.position.y = -box.min.y;
+          scene.add(g);
         });
       }
-
-      _runRow(true,  -110, 1.00, 'N'); _runRow(true,  -135, 1.15, 'N');
-      _runRow(true,   110, 1.00, 'S'); _runRow(true,   135, 1.15, 'S');
-      _runRow(false,  110, 1.00, 'E'); _runRow(false,  135, 1.15, 'E');
-      _runRow(false, -110, 1.00, 'W'); _runRow(false, -135, 1.15, 'W');
-    })();
+      RD_POS.forEach(rz => {
+        for (let x = -84; x <= 84; x += TILE) {
+          if (!RD_POS.some(r => Math.abs(x - r) < TILE * 0.6)) _tile('road-straight.glb', x, rz, Math.PI / 2, 6);
+        }
+      });
+      RD_POS.forEach(rx => {
+        for (let z = -84; z <= 84; z += TILE) {
+          if (!RD_POS.some(r => Math.abs(z - r) < TILE * 0.6)) _tile('road-straight.glb', rx, z, 0, 6);
+        }
+      });
+      RD_POS.forEach(rx => RD_POS.forEach(rz => _tile('road-crossroad.glb', rx, rz, 0, 6)));
+      [[-40, -60, 60], [40, -20, 60]].forEach(([z, x1, x2]) => {
+        for (let x = x1; x <= x2; x += TILE) {
+          if (RD_POS.some(r => Math.abs(x - r) < TILE * 0.6)) _tile('road-intersection.glb', x, z, 0, 5);
+          else _tile('road-straight.glb', x, z, Math.PI / 2, 5);
+        }
+      });
+      [[-40, -60, 20], [40, -20, 60]].forEach(([x, z1, z2]) => {
+        for (let z = z1; z <= z2; z += TILE) {
+          if (RD_POS.some(r => Math.abs(z - r) < TILE * 0.6)) _tile('road-intersection.glb', x, z, 0, 5);
+          else _tile('road-straight.glb', x, z, 0, 5);
+        }
+      });
+    }
+    buildRoads();
 
     // ════════════════════════════════════════
-    //  ARBRES GLB (alignés sur les trottoirs)
+    //  BÂTIMENTS KENNEY GLB
     // ════════════════════════════════════════
-    const SW_MID   = RD_W / 2 + SW_W / 2; // 7.9 = centre trottoir depuis axe route
-    const TREE_STP = 50; // espacement doublé pour réduire le nombre d'arbres
-    const _TREE_DEFS = [
-      { key:'arbre_low_poly.glb',            scale:2.0 },
-      { key:'pine_trees_pack__ps1_low_poly.glb', scale:1.5 },
-    ];
-
-    (function _initTrees() {
-      const _RANGES = [[-90,-68],[-28,-15],[15,28],[68,90]];
-      const _treePosQ = [];
-      let _tries = 0;
-      while (_treePosQ.length < 18 && _tries++ < 600) {
-        const rx = _RANGES[Math.floor(Math.random() * _RANGES.length)];
-        const rz = _RANGES[Math.floor(Math.random() * _RANGES.length)];
-        const tx = rx[0] + Math.random()*(rx[1]-rx[0]);
-        const tz = rz[0] + Math.random()*(rz[1]-rz[0]);
-        if (!RD_POS.every(r => Math.abs(tx - r) > 8 && Math.abs(tz - r) > 8)) continue;
-        if (buildingBounds.some(b => Math.abs(tx - b.x) < b.hw + 10 && Math.abs(tz - b.z) < b.hd + 10)) continue;
-        _treePosQ.push([tx, tz]);
+    function buildCity() {
+      const _D = RD_W / 2 + 2;
+      function _ok(x, z) { return RD_POS.every(r => Math.abs(x - r) > _D && Math.abs(z - r) > _D); }
+      function _place(key, x, z, rotY, scl) {
+        _loadGLB(key, g => {
+          if (!g) return;
+          g.scale.setScalar(scl || 3);
+          g.rotation.y = rotY || 0;
+          g.position.set(x, 0, z);
+          const box = new THREE.Box3().setFromObject(g);
+          g.position.y = -box.min.y;
+          scene.add(g);
+        });
+        buildingBounds.push({ x, z, r: 6 });
       }
-      let arbreTmpl = null;
-      function place() {
-        if (!arbreTmpl) return;
-        _treePosQ.forEach(([tx, tz]) => {
-          const m = arbreTmpl.clone(true);
-          const s = 0.9 + Math.random() * 0.7;
-          m.rotation.set(0, Math.random() * Math.PI * 2, 0);
-          m.scale.set(s, s, s);
-          m.position.set(tx, 0, tz);
-          const box = new THREE.Box3().setFromObject(m);
-          m.position.y = -box.min.y;
-          scene.add(m);
+      const _SKY = ['building-skyscraper-a.glb','building-skyscraper-b.glb','building-skyscraper-c.glb','building-skyscraper-d.glb','building-skyscraper-e.glb'];
+      const _COM = 'abcdefghijklmn'.split('').map(c => `building-${c}.glb`);
+      const _TYP = 'abcdefghijklmnopqrstu'.split('').map(c => `building-type-${c}.glb`);
+      const _LOW = 'abcdefghijklmn'.split('').map(c => `low-detail-building-${c}.glb`).concat(['low-detail-building-wide-a.glb','low-detail-building-wide-b.glb']);
+      [[-40,-40],[0,-40],[40,-40],[-40,0],[40,0],[-40,40],[0,40],[40,40]].forEach(([bx,bz],bi) => {
+        for (let k=0; k<3; k++) {
+          const x=bx+(Math.random()*14-7), z=bz+(Math.random()*14-7);
+          if (_ok(x,z) && !buildingBounds.some(b=>Math.hypot(x-b.x,z-b.z)<10)) _place(_SKY[(bi*3+k)%5], x, z, Math.random()*Math.PI*2, 3);
+        }
+      });
+      [[-70,-70],[70,-70],[-70,70],[70,70],[-70,-20],[-70,20],[70,-20],[70,20],[-20,-70],[20,-70],[-20,70],[20,70]].forEach(([bx,bz],bi) => {
+        for (let k=0; k<4; k++) {
+          const x=bx+(Math.random()*12-6), z=bz+(Math.random()*12-6);
+          if (_ok(x,z) && !buildingBounds.some(b=>Math.hypot(x-b.x,z-b.z)<9)) _place(_COM[(bi*4+k)%14], x, z, Math.random()*Math.PI*2, 3);
+        }
+      });
+      for (let i=0; i<40; i++) {
+        const x=-90+Math.random()*180, z=-90+Math.random()*180;
+        if (_ok(x,z) && !buildingBounds.some(b=>Math.hypot(x-b.x,z-b.z)<10)) _place(_TYP[i%21], x, z, Math.random()*Math.PI*2, 3);
+      }
+      for (let i=0; i<30; i++) {
+        const x=-80+Math.random()*160, z=-80+Math.random()*160;
+        if (_ok(x,z) && !buildingBounds.some(b=>Math.hypot(x-b.x,z-b.z)<8)) _place(_LOW[i%_LOW.length], x, z, Math.random()*Math.PI*2, 3);
+      }
+    }
+    buildCity();
+
+    // ════════════════════════════════════════
+    //  MUR DE BORDURE
+    // ════════════════════════════════════════
+    function spawnBorderWall() {
+      const _SKY = ['building-skyscraper-a.glb','building-skyscraper-b.glb','building-skyscraper-c.glb','building-skyscraper-d.glb','building-skyscraper-e.glb'];
+      const _LOW = 'abcdefghijklmn'.split('').map(c => `low-detail-building-${c}.glb`);
+      function _w(x, z, rotY, idx) {
+        const key = idx%2===0 ? _SKY[idx%5] : _LOW[idx%14];
+        const scl = idx%2===0 ? 5 : 4;
+        _loadGLB(key, g => {
+          if (!g) return;
+          g.scale.setScalar(scl); g.rotation.y = rotY;
+          g.position.set(x, 0, z);
+          const box = new THREE.Box3().setFromObject(g); g.position.y = -box.min.y;
+          scene.add(g);
+        });
+        buildingBounds.push({ x, z, r: 7 });
+      }
+      let idx = 0;
+      [[-110,0],[-135,0],[110,Math.PI],[135,Math.PI]].forEach(([zd,rotY]) => {
+        for (let x=-100; x<=100; x+=13) _w(x + (Math.abs(zd)===135 ? Math.random()*8-4 : 0), zd, rotY, idx++);
+      });
+      [[110,-Math.PI/2],[135,-Math.PI/2],[-110,Math.PI/2],[-135,Math.PI/2]].forEach(([xd,rotY]) => {
+        for (let z=-100; z<=100; z+=13) _w(xd, z + (Math.abs(xd)===135 ? Math.random()*8-4 : 0), rotY, idx++);
+      });
+    }
+    spawnBorderWall();
+
+    // ════════════════════════════════════════
+    //  VÉGÉTATION
+    // ════════════════════════════════════════
+    function spawnTrees() {
+      const _T = ['tree-large.glb','tree-small.glb','tree-park-large.glb','tree-pine-large.glb'];
+      let placed=0, tries=0;
+      while (placed<30 && tries++<500) {
+        const x=-90+Math.random()*180, z=-90+Math.random()*180;
+        if (!RD_POS.every(r=>Math.abs(x-r)>8 && Math.abs(z-r)>8)) continue;
+        if (buildingBounds.some(b=>Math.hypot(x-b.x,z-b.z)<11)) continue;
+        const scl=2.5+Math.random()*1.5, key=_T[placed%4];
+        _loadGLB(key, g => {
+          if (!g) return;
+          g.scale.setScalar(scl); g.rotation.y=Math.random()*Math.PI*2;
+          g.position.set(x, 0, z);
+          const box=new THREE.Box3().setFromObject(g); g.position.y=-box.min.y;
+          scene.add(g);
+        });
+        placed++;
+      }
+    }
+    spawnTrees();
+
+    // ════════════════════════════════════════
+    //  MOBILIER URBAIN
+    // ════════════════════════════════════════
+    function spawnFurniture() {
+      function _obj(key, x, z, scl) {
+        _loadGLB(key, g => {
+          if (!g) return;
+          g.scale.setScalar(scl); g.rotation.y=Math.random()*Math.PI*2;
+          g.position.set(x, 0, z);
+          const box=new THREE.Box3().setFromObject(g); g.position.y=-box.min.y;
+          scene.add(g);
         });
       }
-      let loaded = 0;
-      const done = () => { if (++loaded === 2) place(); };
-      _loadGLB('arbre_low_poly.glb',                g => {
-        if (g) {
-          g.traverse(c => { if (c.isMesh && c.material && !c.material.map) c.material = new THREE.MeshBasicMaterial({ color: c.material.color || 0x3a6b25 }); });
-          arbreTmpl = g;
-        }
-        done();
-      });
-      /* _loadGLB('pine_trees_pack__ps1_low_poly.glb',  g => {
-        if (g) {
-          g.traverse(c => { if (c.isMesh) c.material = new THREE.MeshBasicMaterial({ color: 0x2d5a1b }); });
-          pineTmpl = g;
-        }
-        done();
-      }); */
-      done(); // pine désactivé — compteur done() maintenu
-    })();
-
-    // ════════════════════════════════════════
-    //  LAMPADAIRES GLB
-    // ════════════════════════════════════════
-    const LAMP_STP = 40;
-    const LAMP_OFF = SW_MID - 0.3;
-
-    const _lampPosQ = [];
-    RD_POS.forEach(rz => {
-      [-1, 1].forEach(side => {
-        const lz = rz + side * LAMP_OFF;
-        const rotY = side > 0 ? Math.PI / 2 : -Math.PI / 2;
-        for (let lx = -WORLD / 2 + LAMP_STP * 0.4; lx < WORLD / 2; lx += LAMP_STP) {
-          if (!RD_POS.some(rx => Math.abs(lx - rx) < RD_W / 2 + 1)) _lampPosQ.push([lx, lz, rotY]);
+      RD_POS.forEach(rz => {
+        for (let x=-84; x<=84; x+=24) {
+          if (RD_POS.some(r=>Math.abs(x-r)<8)) continue;
+          _obj('detail-light-single.glb', x, rz+8, 3);
         }
       });
-    });
-    RD_POS.forEach(rx => {
-      [-1, 1].forEach(side => {
-        const lx = rx + side * LAMP_OFF;
-        const rotY = side > 0 ? Math.PI : 0;
-        for (let lz = -WORLD / 2 + LAMP_STP * 0.4; lz < WORLD / 2; lz += LAMP_STP) {
-          if (!RD_POS.some(rz => Math.abs(lz - rz) < RD_W / 2 + 1)) _lampPosQ.push([lx, lz, rotY]);
+      RD_POS.forEach(rx => {
+        for (let z=-84; z<=84; z+=24) {
+          if (RD_POS.some(r=>Math.abs(z-r)<8)) continue;
+          _obj('detail-light-single.glb', rx+8, z, 3);
         }
       });
-    });
-
-    /* street_lamp désactivé
-    _loadGLB('street_lamp.glb', tmpl => {
-      if (!tmpl) return;
-      tmpl.traverse(c => { if (c.isMesh) c.material = new THREE.MeshBasicMaterial({ color: 0x888888 }); });
-      _lampPosQ.forEach(([lx, lz, rotY]) => {
-        const m = tmpl.clone(true);
-        m.scale.set(0.008, 0.008, 0.008);
-        m.rotation.y = rotY;
-        m.position.set(lx, 0, lz);
-        const box = new THREE.Box3().setFromObject(m);
-        m.position.y = -box.min.y;
-        scene.add(m);
-      });
-    }); */
+      [[-35,-35],[35,-35],[-35,35],[35,35],[-5,-45],[5,45],[-45,5],[45,-5]].forEach(([x,z])=>_obj('detail-bench.glb',x,z,3));
+      [[-10,-35],[10,35],[-35,10],[35,-10],[-50,-10],[50,10]].forEach(([x,z])=>_obj('detail-dumpster-open.glb',x,z,3));
+      [[-14,-27],[14,-27],[-27,14],[27,-14],[-14,27],[14,27]].forEach(([x,z])=>_obj('fire_hydrant_low_poly.glb',x,z,2));
+    }
+    spawnFurniture();
 
     // ════════════════════════════════════════
-    //  BORNES INCENDIE GLB
-    // ════════════════════════════════════════
-    const _hydrantPosQ = [
-      [-14,-27],[14,-27],[-27,14],[27,-14],[-14,27],[14,27],
-      [-27,-14],[27,14],[-50,-27],[50,27],[-27,-50],[27,50],
-    ];
-
-    _loadGLB('fire_hydrant_low_poly.glb', tmpl => {
-      if (!tmpl) return;
-      tmpl.traverse(c => { if (c.isMesh && c.material && !c.material.map) c.material = new THREE.MeshBasicMaterial({ color: c.material.color || 0xcc3300 }); });
-      _hydrantPosQ.forEach(([hx, hz]) => {
-        const m = tmpl.clone(true);
-        m.scale.set(2.0, 2.0, 2.0);
-        m.rotation.y = Math.random() * Math.PI * 2;
-        m.position.set(hx, 0, hz);
-        const box = new THREE.Box3().setFromObject(m);
-        m.position.y = -box.min.y;
-        scene.add(m);
-      });
-    });
-
-    // ════════════════════════════════════════
-    //  FEUX DE CIRCULATION — procéduraux v2
+    //  FEUX DE CIRCULATION — procéduraux
     // ════════════════════════════════════════
     const _TL2 = [];
     const _TL2_DUR  = { red:5.0, green:5.0, orange:1.0 };
     const _TL2_NEXT = { red:'green', green:'orange', orange:'red' };
     const _TL2_COLS = {
       red:    { on:0xFF2200, off:0x220000 },
-      orange: { on:0xFF8800, off:0x221100 },
-      green:  { on:0x00CC00, off:0x002200 },
+      orange: { on:0xFF8C00, off:0x221100 },
+      green:  { on:0x00CC44, off:0x002200 },
     };
 
     function _updateTrafficLights(dt) {
@@ -874,30 +356,23 @@
       });
     }
 
-    (function _spawnTL2() {
-      const matPole = new THREE.MeshBasicMaterial({ color:0x444444 });
-      const matBox  = new THREE.MeshBasicMaterial({ color:0x111111 });
-      RD_POS.forEach((rx, i) => {
-        RD_POS.forEach((rz, j) => {
-          const phase = (i+j)%2===0 ? 'red' : 'green';
-          const matR = new THREE.MeshBasicMaterial({ color: _TL2_COLS.red[   phase==='red'   ?'on':'off'] });
-          const matO = new THREE.MeshBasicMaterial({ color: _TL2_COLS.orange['off'] });
-          const matG = new THREE.MeshBasicMaterial({ color: _TL2_COLS.green[ phase==='green' ?'on':'off'] });
-          const grp = new THREE.Group();
-          const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.12,5,8), matPole);
-          pole.position.set(0,2.5,0); grp.add(pole);
-          const box = new THREE.Mesh(new THREE.BoxGeometry(0.6,1.8,0.4), matBox);
-          box.position.set(0,5.3,0); grp.add(box);
-          const sR = new THREE.Mesh(new THREE.SphereGeometry(0.2,8,8), matR);
-          sR.position.set(0,5.95,0); grp.add(sR);
-          const sO = new THREE.Mesh(new THREE.SphereGeometry(0.2,8,8), matO);
-          sO.position.set(0,5.35,0); grp.add(sO);
-          const sG = new THREE.Mesh(new THREE.SphereGeometry(0.2,8,8), matG);
-          sG.position.set(0,4.75,0); grp.add(sG);
-          grp.rotation.y = Math.PI/4;
-          grp.position.set(rx+7.5, 0, rz+7.5);
-          scene.add(grp);
-          _TL2.push({ matR, matO, matG, phase, timer:_TL2_DUR[phase] });
+    (function spawnTrafficLights() {
+      const matPole=new THREE.MeshBasicMaterial({color:0x2C2C2C});
+      const matBox =new THREE.MeshBasicMaterial({color:0x111111});
+      RD_POS.forEach((rx,i) => {
+        RD_POS.forEach((rz,j) => {
+          const phase=(i+j)%2===0?'red':'green';
+          const matR=new THREE.MeshBasicMaterial({color:_TL2_COLS.red[phase==='red'?'on':'off']});
+          const matO=new THREE.MeshBasicMaterial({color:_TL2_COLS.orange['off']});
+          const matG=new THREE.MeshBasicMaterial({color:_TL2_COLS.green[phase==='green'?'on':'off']});
+          const grp=new THREE.Group();
+          const pole=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.12,5,8),matPole); pole.position.set(0,2.5,0); grp.add(pole);
+          const box=new THREE.Mesh(new THREE.BoxGeometry(0.55,1.8,0.35),matBox); box.position.set(0,5.3,0); grp.add(box);
+          const sR=new THREE.Mesh(new THREE.SphereGeometry(0.2,8,8),matR); sR.position.set(0,5.95,0); grp.add(sR);
+          const sO=new THREE.Mesh(new THREE.SphereGeometry(0.2,8,8),matO); sO.position.set(0,5.35,0); grp.add(sO);
+          const sG=new THREE.Mesh(new THREE.SphereGeometry(0.2,8,8),matG); sG.position.set(0,4.75,0); grp.add(sG);
+          grp.rotation.y=Math.PI/4; grp.position.set(rx+7.5,0,rz+7.5); scene.add(grp);
+          _TL2.push({matR,matO,matG,phase,timer:_TL2_DUR[phase]});
         });
       });
     })();
@@ -910,13 +385,6 @@
     // ════════════════════════════════════════
 
     // ── GLTFLoader — URL absolue + résolution texture depuis racine du repo ──
-    function _loadGLB(key, cb) {
-      const manager = new THREE.LoadingManager();
-      // Redirige toutes les ressources (y compris Textures/colormap.png) vers la racine
-      manager.setURLModifier(url => { const f = url.split('/').pop(); if (/^[0-9a-f-]{36}$/.test(f)) return url; return NPC_BASE + encodeURIComponent(f); });
-      const loader = new THREE.GLTFLoader(manager);
-      loader.load(NPC_BASE + key, g => cb(g.scene), null, () => { console.warn('GLB manquant:', key); cb(null); });
-    }
 
     // Normalise : scale=1.5 (ou 0.008 pour police_car), grounded y=0, ombres
     function _normalizeKenney(model, key) {
@@ -995,96 +463,6 @@
     _npcLoadNext(); // démarre le chargement GLB asynchrone
 
     // ════════════════════════════════════════
-    //  PIÉTONS PNJ — 15 personnages Kenney Blocky animés
-    // ════════════════════════════════════════
-
-    const PED_BASE   = 'https://nbakflorent-eng.github.io/road-rage-city-CITY-/';
-    const PED_MODELS = ['character-a','character-b','character-c','character-d',
-      'character-e','character-f','character-g','character-h','character-i',
-      'character-j','character-k','character-l','character-m','character-n',
-      'character-o','character-p','character-q','character-r'];
-    // Trottoirs des 4 routes (±20, ±60) — 16 bandes
-    const _SM = RD_W / 2 + SW_W / 2; // 7.9 = centre trottoir depuis axe route
-    const PED_TRACKS = RD_POS.flatMap(r => [
-      { fixedAxis:'z', fixedVal: r - _SM, walkAxis:'x' },
-      { fixedAxis:'z', fixedVal: r + _SM, walkAxis:'x' },
-      { fixedAxis:'x', fixedVal: r - _SM, walkAxis:'z' },
-      { fixedAxis:'x', fixedVal: r + _SM, walkAxis:'z' },
-    ]);
-    const PED_BOUND = 85;
-    const peds = [];
-    const _pedTexMgr = new THREE.LoadingManager();
-    _pedTexMgr.setURLModifier(url => {
-      // Redirige Textures/texture-x.png → PED_BASE/texture-x.png
-      const m = url.match(/[Tt]extures\/([^/]+\.png)/);
-      return m ? PED_BASE + m[1] : url;
-    });
-    const _pedLoader = new THREE.GLTFLoader(_pedTexMgr);
-
-    function _pedSetRot(ped) {
-      const d = ped.dir;
-      if (ped.track.walkAxis === 'x') ped.mesh.rotation.y = d > 0 ? Math.PI/2 : -Math.PI/2;
-      else                             ped.mesh.rotation.y = d > 0 ? 0 : Math.PI;
-    }
-
-    function _findPedLegs(root) {
-      const legPat   = /(up.*leg|upleg|thigh|upperleg)/i;
-      const excl     = /(lower|foot|shin|calf|knee|toe)/i;
-      const leftPat  = /(left|[._]l([._]|$))/i;
-      const rightPat = /(right|[._]r([._]|$))/i;
-      let legL = null, legR = null;
-      root.traverse(obj => {
-        const n = obj.name;
-        if (!legPat.test(n) || excl.test(n)) return;
-        if (!legL && leftPat.test(n))  legL = obj;
-        if (!legR && rightPat.test(n)) legR = obj;
-      });
-      return { legL, legR };
-    }
-
-    // 24 piétons — 3 par trottoir sur 8 trottoirs (fixedAxis:'z', tous les 4 axes)
-    (function _initPeds() {
-      const _PED_COLORS = [0xe74c3c, 0x3498db, 0x2ecc71, 0xf39c12, 0x9b59b6];
-      const tracks8 = PED_TRACKS.filter(t => t.fixedAxis === 'z');
-      let pedIndex = 0;
-      tracks8.forEach(track => {
-        for (let i = 0; i < 3; i++) {
-          let pos;
-          do { pos = -80 + Math.random() * 160; }
-          while (RD_POS.some(r => Math.abs(pos - r) < 7));
-          const dir   = Math.random() < 0.5 ? 1 : -1;
-          const speed = 1.5 + Math.random() * 1.5;
-          const key   = PED_MODELS[pedIndex % 18];
-          pedIndex++;
-          const onLoad = mesh => {
-            mesh.scale.set(0.8, 0.8, 0.8);
-            mesh.position.set(pos, 0, track.fixedVal);
-            const box = new THREE.Box3().setFromObject(mesh);
-            mesh.position.y = -box.min.y;
-            mesh.traverse(c => { if (c.isMesh) console.log('PED node:', c.name, c.parent && c.parent.name); });
-            scene.add(mesh);
-            const { legL, legR } = _findPedLegs(mesh);
-            const _kids = mesh.children;
-            const ped = {
-              mesh, track, pos, dir, speed, baseY: mesh.position.y,
-              legL: legL || (_kids[0] || null),
-              legR: legR || (_kids[1] || null)
-            };
-            _pedSetRot(ped);
-            peds.push(ped);
-          };
-          _pedLoader.load(PED_BASE + key + '.glb', gltf => onLoad(gltf.scene), null, () => {
-            const fallback = new THREE.Mesh(
-              new THREE.CylinderGeometry(0.2, 0.2, 1.4, 8),
-              new THREE.MeshBasicMaterial({ color: _PED_COLORS[Math.floor(Math.random() * _PED_COLORS.length)] })
-            );
-            onLoad(fallback);
-          });
-        }
-      });
-    })();
-
-    // ════════════════════════════════════════
     //  VOITURE JOUEUR
     //  Type : berline rouge, mesh box simple
     //  Structure : caisse + cabine + 4 roues
@@ -1161,7 +539,7 @@
       playerCar.add(wg);
     });
 
-    playerCar.position.set(-80, 0, -20); // route z=-20, lane droite, face est
+    playerCar.position.set(0, 0.5, 0);
     scene.add(playerCar);
 
     // ════════════════════════════════════════
@@ -1234,15 +612,13 @@
       playerCar.position.x = Math.max(-BOUND, Math.min(BOUND, playerCar.position.x));
       playerCar.position.z = Math.max(-BOUND, Math.min(BOUND, playerCar.position.z));
 
-      // ── Collision bâtiments (AABB) — annule le déplacement si collision ──
-      const _CAR_R = 0.5;
+      // ── Collision bâtiments (radiale) ──
+      const _CAR_R = 2.5;
       for (const b of buildingBounds) {
-        const ox = playerCar.position.x - b.x;
-        const oz = playerCar.position.z - b.z;
-        if (Math.abs(ox) < b.hw + _CAR_R && Math.abs(oz) < b.hd + _CAR_R) {
+        if (Math.hypot(playerCar.position.x - b.x, playerCar.position.z - b.z) < (b.r||6) + _CAR_R) {
           playerCar.position.x = _prevX;
           playerCar.position.z = _prevZ;
-          carSpeed *= 0.1; // rebond amortissement
+          carSpeed *= 0.1;
           break;
         }
       }
@@ -1302,37 +678,6 @@
         }
       });
 
-      // ── Piétons PNJ ──
-      peds.forEach((ped, pi) => {
-        const px = ped.mesh.position.x, pz = ped.mesh.position.z;
-        // Proximité piéton–piéton : demi-tour si < 2u
-        for (let j = 0; j < peds.length; j++) {
-          if (j === pi || peds[j].track !== ped.track) continue;
-          const dx = px - peds[j].mesh.position.x, dz = pz - peds[j].mesh.position.z;
-          if (dx*dx + dz*dz < 4) { ped.dir *= -1; _pedSetRot(ped); break; }
-        }
-        // Position candidate
-        const newPos = ped.pos + ped.dir * ped.speed * dt;
-        const nx = ped.track.walkAxis === 'x' ? newPos : px;
-        const nz = ped.track.walkAxis === 'x' ? pz     : newPos;
-        // Bord du monde : demi-tour
-        if (newPos > PED_BOUND || newPos < -PED_BOUND) {
-          ped.dir = -ped.dir; _pedSetRot(ped); return;
-        }
-        // Collision bâtiments : demi-tour
-        for (const b of buildingBounds) {
-          if (Math.abs(nx - b.x) < b.hw + 0.6 && Math.abs(nz - b.z) < b.hd + 0.6) {
-            ped.dir = -ped.dir; _pedSetRot(ped); return;
-          }
-        }
-        // Commit déplacement
-        ped.pos = newPos;
-        if (ped.track.walkAxis === 'x') ped.mesh.position.x = newPos;
-        else                             ped.mesh.position.z = newPos;
-        if (ped.legL) ped.legL.rotation.x =  Math.sin(Date.now() * 0.005 + pi) * 0.5;
-        if (ped.legR) ped.legR.rotation.x = -Math.sin(Date.now() * 0.005 + pi) * 0.5;
-      });
-
       // ── HUD vitesse (km/h) ──
       document.getElementById('speed-display').textContent =
         Math.abs(Math.round(carSpeed * 3.6));
@@ -1359,8 +704,8 @@
       buildingBounds.forEach(b => {
         ctx.fillStyle = (Math.abs(b.x)>90 || Math.abs(b.z)>90) ? '#555555' : '#8B7355';
         const mx = b.x * scale + cx, mz = b.z * scale + cy;
-        const bw = Math.max(2, b.hw*2*scale), bd = Math.max(2, b.hd*2*scale);
-        ctx.fillRect(mx - bw/2, mz - bd/2, bw, bd);
+        const r = Math.max(2, (b.r||6)*scale);
+        ctx.fillRect(mx - r, mz - r, r*2, r*2);
       });
       // Joueur — triangle directionnel
       const px = playerCar.position.x * scale + cx;
@@ -1375,7 +720,7 @@
 
     function drawMinimap() {
       const w = mmCanvas.width, h = mmCanvas.height, cx = w/2, cy = h/2;
-      const scale = w / WORLD;
+      const scale = w / 200;
       mmCtx.clearRect(0, 0, w, h);
       mmCtx.save();
       mmCtx.beginPath(); mmCtx.arc(cx, cy, cx-1, 0, Math.PI*2);
