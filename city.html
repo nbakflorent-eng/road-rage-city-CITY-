@@ -134,7 +134,7 @@
     //  CONSTANTES
     // ════════════════════════════════════════
     const BASE   = 'https://nbakflorent-eng.github.io/road-rage-city-CITY-/';
-    const buildingBounds = [];
+    let buildingBounds = [];
     const RD_POS = [-55, 0, 55];
     const RD_W   = 16;
     const WORLD  = 400;
@@ -162,213 +162,126 @@
     }
 
     // ════════════════════════════════════════
-    //  ROUTES PROCÉDURALES
+    //  ROUTES
     // ════════════════════════════════════════
-    function buildRoads() {
-      const matR = new THREE.MeshBasicMaterial({ color: 0x2a2a2a });
-      const matS = new THREE.MeshBasicMaterial({ color: 0xC0C0C0 });
-      const matD = new THREE.MeshBasicMaterial({ color: 0xFFD700 });
-      function _road(cx, cz, len, w, isH) {
-        const road = new THREE.Mesh(
-          new THREE.PlaneGeometry(isH ? len : w, isH ? w : len), matR);
-        road.rotation.x = -Math.PI / 2;
-        road.position.set(cx, 0.02, cz);
-        scene.add(road);
-        const off = w / 2 + 1;
+    function createRoadGrid() {
+      const roadMat     = new THREE.MeshLambertMaterial({ color: 0x1a1a1a });
+      const lineMat     = new THREE.MeshLambertMaterial({ color: 0xFFDD00 });
+      const sidewalkMat = new THREE.MeshLambertMaterial({ color: 0x888888 });
+      const roadWidth = 14, roadLength = 280;
+      const hRoads = [-120, -80, -40, 0, 40, 80, 120];
+      const vRoads = [-120, -80, -40, 0, 40, 80, 120];
+      const ground2 = new THREE.Mesh(
+        new THREE.PlaneGeometry(400, 400),
+        new THREE.MeshLambertMaterial({ color: 0x3a5a2a })
+      );
+      ground2.rotation.x = -Math.PI / 2; ground2.position.y = 0; scene.add(ground2);
+      hRoads.forEach(z => {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(roadLength, roadWidth), roadMat);
+        m.rotation.x = -Math.PI / 2; m.position.set(0, 0.01, z); scene.add(m);
         [-1, 1].forEach(s => {
-          const sw = new THREE.Mesh(
-            new THREE.PlaneGeometry(isH ? len : 2, isH ? 2 : len), matS);
+          const sw = new THREE.Mesh(new THREE.PlaneGeometry(roadLength, 3), sidewalkMat);
           sw.rotation.x = -Math.PI / 2;
-          sw.position.set(isH ? cx : cx + s * off, 0.025, isH ? cz + s * off : cz);
+          sw.position.set(0, 0.02, z + s * (roadWidth / 2 + 1.5));
           scene.add(sw);
         });
-        const half = len / 2;
-        for (let t = -half + 1.5; t < half; t += 8) {
-          const d = new THREE.Mesh(
-            new THREE.PlaneGeometry(isH ? 3 : 0.25, isH ? 0.25 : 3), matD);
-          d.rotation.x = -Math.PI / 2;
-          d.position.set(isH ? cx + t : cx, 0.03, isH ? cz : cz + t);
-          scene.add(d);
-        }
-      }
-      // BOULEVARDS — largeur 16
-      _road(    0, -55, 360, 16, true);
-      _road(    0,   0, 360, 16, true);
-      _road(    0,  55, 360, 16, true);
-      _road(  -55,   0, 360, 16, false);
-      _road(   10,   0, 360, 16, false);
-      _road(   70,   0, 360, 16, false);
-      // RUES SECONDAIRES — largeur 10
-      _road(   7.5, -30, 125, 10, true);
-      _road(-117.5,  25, 125, 10, true);
-      _road(   95,   40, 170, 10, true);
-      _road(  -20,    0, 110, 10, false);
-      _road(   40,  -90, 180, 10, false);
-      _road(  -90,    0, 110, 10, false);
-      _road(  110, 27.5,  55, 10, false);
-      // PETITES RUES — largeur 7
-      _road(  -40,  -70, 100,  7, true);
-      _road( 27.5,   70, 165,  7, true);
-      _road( -130, 12.5,  85,  7, false);
-      _road(  150, -7.5,  95,  7, false);
-    }
-    buildRoads();
-
-    // ════════════════════════════════════════
-    //  BÂTIMENTS PAR ZONE
-    // ════════════════════════════════════════
-    function buildCity() {
-      const _D = RD_W / 2 + 2;
-      function _ok(x, z) { return RD_POS.every(r => Math.abs(x-r) > _D && Math.abs(z-r) > _D); }
-      function _place(key, x, z, rotY, scl) {
-        if (!_ok(x, z)) return;
-        if (buildingBounds.some(b => Math.hypot(x-b.x, z-b.z) < 10)) return;
-        buildingBounds.push({ x, z, r: 4 });
-        _loadGLB(key, g => {
-          if (!g) return;
-          g.traverse(c => { if (c.isMesh) { const colors=[0x8B7355,0x9E9E9E,0xC4B49A,0x7A8C9E,0x6B5B4E,0xB8A89A,0x5D6B52,0x8B6F5E]; c.material=new THREE.MeshBasicMaterial({color:colors[Math.floor(Math.random()*colors.length)]}); } });
-          g.scale.setScalar(scl || 3);
-          g.rotation.y = rotY;
-          g.position.set(x, 0, z);
-          const box = new THREE.Box3().setFromObject(g);
-          g.position.y = -box.min.y;
-          scene.add(g);
-        });
-      }
-      const _SKY  = ['building-skyscraper-a.glb','building-skyscraper-b.glb','building-skyscraper-c.glb','building-skyscraper-d.glb','building-skyscraper-e.glb'];
-      const _COM  = 'abcdefgh'.split('').map(c => `building-${c}.glb`);
-      const _TYPA = 'abcdefgh'.split('').map(c => `building-type-${c}.glb`);
-      const _TYPB = 'ijklmnopqrstu'.split('').map(c => `building-type-${c}.glb`);
-      const _LOW  = 'abcdefghijklmn'.split('').map(c => `low-detail-building-${c}.glb`)
-                    .concat(['low-detail-building-wide-a.glb','low-detail-building-wide-b.glb']);
-
-      // CENTRE-VILLE — gratte-ciels, scale 4
-      [[-8,-8],[8,-8],[-8,8],[8,8]].forEach(([ox,oz], i) => {
-        _place(_SKY[i%5], ox+(Math.random()-0.5)*3, oz+(Math.random()-0.5)*3, Math.random()*Math.PI*2, 4);
-      });
-
-      // COMMERCIALE — 3 par bloc ×2
-      [[-40,0],[40,0]].forEach(([cx,cz], bi) => {
-        for (let k = 0; k < 3; k++)
-          _place(_COM[(bi*3+k)%8], cx+(Math.random()*16-8), cz+(Math.random()*16-8), Math.random()*Math.PI*2, 3);
-      });
-
-      // RÉSIDENTIELLE NORD — 5 par bloc ×3, scale 2.5
-      [[-40,-40],[0,-40],[40,-40]].forEach(([cx,cz], bi) => {
-        for (let k = 0; k < 5; k++)
-          _place(_TYPA[(bi*5+k)%8], cx+(Math.random()*16-8), cz+(Math.random()*16-8), Math.random()*Math.PI*2, 2.5);
-      });
-
-      // RÉSIDENTIELLE SUD — 5 par bloc ×3, scale 2.5
-      [[-40,40],[0,40],[40,40]].forEach(([cx,cz], bi) => {
-        for (let k = 0; k < 5; k++)
-          _place(_TYPB[(bi*5+k)%13], cx+(Math.random()*16-8), cz+(Math.random()*16-8), Math.random()*Math.PI*2, 2.5);
-      });
-
-      // INDUSTRIELLE OUEST — entrepôts, scale 3.5, espacés
-      const _indBlocs = [[-80,-40],[-80,0],[-80,40]];
-      for (let bi = 0; bi < _indBlocs.length; bi++) {
-        const [cx, cz] = _indBlocs[bi];
-        for (let k = 0; k < 3; k++) {
-          const x = cx + (Math.random()*18-9), z = cz + (Math.random()*18-9);
-          if (buildingBounds.some(b => Math.hypot(x-b.x, z-b.z) < 12)) continue;
-          buildingBounds.push({ x, z, r: 4 });
-          const key = _LOW[(bi*3+k) % _LOW.length];
-          _loadGLB(key, g => {
-            if (!g) return;
-            g.traverse(c => { if (c.isMesh) { const colors=[0x8B7355,0x9E9E9E,0xC4B49A,0x7A8C9E,0x6B5B4E,0xB8A89A,0x5D6B52,0x8B6F5E]; c.material=new THREE.MeshBasicMaterial({color:colors[Math.floor(Math.random()*colors.length)]}); } });
-            g.scale.setScalar(3.5); g.rotation.y = Math.random()*Math.PI*2;
-            g.position.set(x, 0, z);
-            const box = new THREE.Box3().setFromObject(g);
-            g.position.y = -box.min.y; scene.add(g);
-          });
-        }
-      }
-
-      // PÉRIPHÉRIE — double rangée pour cacher les limites
-      const _BSKY = ['building-skyscraper-a.glb','building-skyscraper-b.glb','building-skyscraper-c.glb'];
-      const _BLOW = ['low-detail-building-a.glb','low-detail-building-b.glb','low-detail-building-c.glb','low-detail-building-d.glb'];
-      function _bw(x, z, rotY, ti) {
-        const k = ti % 2;
-        const key = k === 0 ? _BSKY[ti % 3] : _BLOW[ti % 4];
-        const scl = k === 0 ? 5 : 4;
-        _loadGLB(key, g => {
-          if (!g) return;
-          g.traverse(c => { if (c.isMesh) { const colors=[0x8B7355,0x9E9E9E,0xC4B49A,0x7A8C9E,0x6B5B4E,0xB8A89A,0x5D6B52,0x8B6F5E]; c.material=new THREE.MeshBasicMaterial({color:colors[Math.floor(Math.random()*colors.length)]}); } });
-          g.scale.setScalar(scl); g.rotation.y = rotY;
-          g.position.set(x, 0, z);
-          const box = new THREE.Box3().setFromObject(g);
-          g.position.y = -box.min.y; scene.add(g);
-        });
-        buildingBounds.push({ x, z, r: 4 });
-      }
-      let _bwi = 0;
-      for (let t = -120; t <= 120; t += 13) {
-        _bw(t,    110, Math.PI,     _bwi++);
-        _bw(t,    123, Math.PI,     _bwi++);
-        _bw(t,   -110, 0,           _bwi++);
-        _bw(t,   -123, 0,           _bwi++);
-        _bw( 110, t,  -Math.PI/2,   _bwi++);
-        _bw( 123, t,  -Math.PI/2,   _bwi++);
-        _bw(-110, t,   Math.PI/2,   _bwi++);
-        _bw(-123, t,   Math.PI/2,   _bwi++);
-      }
-    }
-    buildCity();
-
-    // ════════════════════════════════════════
-    //  VÉGÉTATION
-    // ════════════════════════════════════════
-    function spawnTrees() {
-      const _T = ['tree-large.glb','tree-small.glb','tree-park-large.glb','tree-pine-large.glb'];
-      let placed=0, tries=0;
-      while (placed<30 && tries++<500) {
-        const x=-90+Math.random()*180, z=-90+Math.random()*180;
-        if (!RD_POS.every(r=>Math.abs(x-r)>8 && Math.abs(z-r)>8)) continue;
-        if (buildingBounds.some(b=>Math.hypot(x-b.x,z-b.z)<11)) continue;
-        const scl=2.5+Math.random()*1.5, key=_T[placed%4];
-        _loadGLB(key, g => {
-          if (!g) return;
-          g.scale.setScalar(scl); g.rotation.y=Math.random()*Math.PI*2;
-          g.position.set(x, 0, z);
-          const box=new THREE.Box3().setFromObject(g); g.position.y=-box.min.y;
-          scene.add(g);
-        });
-        placed++;
-      }
-    }
-    spawnTrees();
-
-    // ════════════════════════════════════════
-    //  MOBILIER URBAIN
-    // ════════════════════════════════════════
-    function spawnFurniture() {
-      function _obj(key, x, z, scl) {
-        _loadGLB(key, g => {
-          if (!g) return;
-          g.scale.setScalar(scl); g.rotation.y=Math.random()*Math.PI*2;
-          g.position.set(x, 0, z);
-          const box=new THREE.Box3().setFromObject(g); g.position.y=-box.min.y;
-          scene.add(g);
-        });
-      }
-      RD_POS.forEach(rz => {
-        for (let x=-84; x<=84; x+=24) {
-          if (RD_POS.some(r=>Math.abs(x-r)<8)) continue;
-          _obj('detail-light-single.glb', x, rz+8, 3);
+        for (let x = -130; x < 130; x += 10) {
+          const dash = new THREE.Mesh(new THREE.PlaneGeometry(5, 0.4), lineMat);
+          dash.rotation.x = -Math.PI / 2; dash.position.set(x, 0.05, z); scene.add(dash);
         }
       });
-      RD_POS.forEach(rx => {
-        for (let z=-84; z<=84; z+=24) {
-          if (RD_POS.some(r=>Math.abs(z-r)<8)) continue;
-          _obj('detail-light-single.glb', rx+8, z, 3);
+      vRoads.forEach(x => {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(roadWidth, roadLength), roadMat);
+        m.rotation.x = -Math.PI / 2; m.position.set(x, 0.01, 0); scene.add(m);
+        [-1, 1].forEach(s => {
+          const sw = new THREE.Mesh(new THREE.PlaneGeometry(3, roadLength), sidewalkMat);
+          sw.rotation.x = -Math.PI / 2;
+          sw.position.set(x + s * (roadWidth / 2 + 1.5), 0.02, 0);
+          scene.add(sw);
+        });
+        for (let z = -130; z < 130; z += 10) {
+          const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 5), lineMat);
+          dash.rotation.x = -Math.PI / 2; dash.position.set(x, 0.05, z); scene.add(dash);
         }
       });
-      [[-35,-35],[35,-35],[-35,35],[35,35],[-5,-45],[5,45],[-45,5],[45,-5]].forEach(([x,z])=>_obj('detail-bench.glb',x,z,3));
-      [[-10,-35],[10,35],[-35,10],[35,-10],[-50,-10],[50,10]].forEach(([x,z])=>_obj('detail-dumpster-open.glb',x,z,3));
-      [[-14,-27],[14,-27],[-27,14],[27,-14],[-14,27],[14,27]].forEach(([x,z])=>_obj('fire_hydrant_low_poly.glb',x,z,2));
     }
-    spawnFurniture();
+
+    // ════════════════════════════════════════
+    //  BÂTIMENTS
+    // ════════════════════════════════════════
+    function loadBuilding(filename, x, z, scale, rotY, boundRadius) {
+      _loadGLB(filename, g => {
+        if (!g) return;
+        g.scale.setScalar(scale);
+        g.position.set(x, 0, z);
+        g.rotation.y = rotY;
+        const box = new THREE.Box3().setFromObject(g);
+        g.position.y = -box.min.y;
+        scene.add(g);
+        buildingBounds.push({ x, z, r: boundRadius });
+      });
+    }
+
+    function createDowntown() {
+      [
+        { file: 'building-skyscraper-a.glb', x: -60, z: -60, s: 1.8, ry: 0 },
+        { file: 'building-skyscraper-b.glb', x: -20, z: -60, s: 2.0, ry: Math.PI/2 },
+        { file: 'building-skyscraper-c.glb', x:  20, z: -60, s: 1.9, ry: 0 },
+        { file: 'building-skyscraper-d.glb', x:  60, z: -60, s: 2.1, ry: Math.PI },
+        { file: 'building-skyscraper-e.glb', x: -60, z: -20, s: 1.8, ry: Math.PI/2 },
+        { file: 'building-skyscraper-a.glb', x:  60, z: -20, s: 2.0, ry: 0 },
+        { file: 'building-skyscraper-b.glb', x: -60, z:  20, s: 1.9, ry: 0 },
+        { file: 'building-skyscraper-c.glb', x:  60, z:  20, s: 2.0, ry: Math.PI },
+        { file: 'building-skyscraper-d.glb', x: -60, z:  60, s: 1.8, ry: Math.PI/2 },
+        { file: 'building-skyscraper-e.glb', x: -20, z:  60, s: 2.1, ry: 0 },
+        { file: 'building-skyscraper-a.glb', x:  20, z:  60, s: 1.8, ry: Math.PI },
+        { file: 'building-skyscraper-b.glb', x:  60, z:  60, s: 2.0, ry: Math.PI/2 },
+        { file: 'building-a.glb', x: -20, z: -20, s: 1.6, ry: 0 },
+        { file: 'building-b.glb', x:  20, z: -20, s: 1.5, ry: Math.PI/2 },
+        { file: 'building-c.glb', x: -20, z:  20, s: 1.6, ry: Math.PI },
+        { file: 'building-d.glb', x:  20, z:  20, s: 1.5, ry: 0 },
+        { file: 'building-e.glb', x:   0, z:   0, s: 1.4, ry: Math.PI/4 },
+      ].forEach(b => loadBuilding(b.file, b.x, b.z, b.s, b.ry, 7));
+    }
+
+    function createSuburbs() {
+      [
+        { file: 'building-type-a.glb', x: -100, z: -100, s: 1.2, ry: 0 },
+        { file: 'building-type-b.glb', x:  -60, z: -100, s: 1.3, ry: Math.PI/2 },
+        { file: 'building-type-c.glb', x:  -20, z: -100, s: 1.1, ry: 0 },
+        { file: 'building-type-d.glb', x:   20, z: -100, s: 1.2, ry: Math.PI },
+        { file: 'building-type-e.glb', x:   60, z: -100, s: 1.3, ry: Math.PI/2 },
+        { file: 'building-type-f.glb', x:  100, z: -100, s: 1.1, ry: 0 },
+        { file: 'building-type-g.glb', x: -100, z:  100, s: 1.2, ry: Math.PI },
+        { file: 'building-type-h.glb', x:  -60, z:  100, s: 1.3, ry: 0 },
+        { file: 'building-type-i.glb', x:  -20, z:  100, s: 1.1, ry: Math.PI/2 },
+        { file: 'building-type-j.glb', x:   20, z:  100, s: 1.2, ry: Math.PI },
+        { file: 'building-type-k.glb', x:   60, z:  100, s: 1.3, ry: 0 },
+        { file: 'building-type-l.glb', x:  100, z:  100, s: 1.1, ry: Math.PI/2 },
+        { file: 'building-type-m.glb', x: -100, z:  -60, s: 1.2, ry: Math.PI/2 },
+        { file: 'building-type-n.glb', x: -100, z:  -20, s: 1.3, ry: 0 },
+        { file: 'building-type-o.glb', x: -100, z:   20, s: 1.1, ry: Math.PI },
+        { file: 'building-type-p.glb', x: -100, z:   60, s: 1.2, ry: Math.PI/2 },
+        { file: 'building-type-q.glb', x:  100, z:  -60, s: 1.2, ry: 0 },
+        { file: 'building-type-r.glb', x:  100, z:  -20, s: 1.3, ry: Math.PI/2 },
+        { file: 'building-type-s.glb', x:  100, z:   20, s: 1.1, ry: 0 },
+        { file: 'building-type-u.glb', x:  100, z:   60, s: 1.2, ry: Math.PI },
+        { file: 'low-detail-building-a.glb',      x: -100, z: -100, s: 1.0, ry: 0 },
+        { file: 'low-detail-building-b.glb',      x:    0, z: -100, s: 1.0, ry: 0 },
+        { file: 'low-detail-building-c.glb',      x:  100, z: -100, s: 1.0, ry: 0 },
+        { file: 'low-detail-building-d.glb',      x: -100, z:    0, s: 1.0, ry: Math.PI/2 },
+        { file: 'low-detail-building-e.glb',      x:  100, z:    0, s: 1.0, ry: Math.PI/2 },
+        { file: 'low-detail-building-f.glb',      x: -100, z:  100, s: 1.0, ry: Math.PI },
+        { file: 'low-detail-building-wide-a.glb', x:    0, z:  100, s: 1.0, ry: Math.PI },
+        { file: 'low-detail-building-wide-b.glb', x:  100, z:  100, s: 1.0, ry: Math.PI },
+      ].forEach(b => loadBuilding(b.file, b.x, b.z, b.s, b.ry, 5));
+    }
+
+    buildingBounds = [];
+    createRoadGrid();
+    createDowntown();
+    createSuburbs();
+
 
     // ════════════════════════════════════════
     //  FEUX DE CIRCULATION — procéduraux
@@ -485,7 +398,7 @@
     function _npcSpawnAll() {
       const pool = _buildWeightedPool(KENNEY_DEFS, _npcTmpl);
       if (!pool.length) { console.warn('Aucun GLB chargé — PNJ absents'); return; }
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 5; i++) {
         const def = pool[Math.floor(rnd() * pool.length)];
         _npcPlaceModel(_npcTmpl[def.key]);
       }
@@ -651,14 +564,15 @@
       playerCar.position.x = Math.max(-BOUND, Math.min(BOUND, playerCar.position.x));
       playerCar.position.z = Math.max(-BOUND, Math.min(BOUND, playerCar.position.z));
 
-      // ── Collision bâtiments (radiale) ──
-      const _CAR_R = 2.5;
+      // ── Collision bâtiments (push-back) ──
       for (const b of buildingBounds) {
-        if (Math.hypot(playerCar.position.x - b.x, playerCar.position.z - b.z) < b.r) {
-          playerCar.position.x = _prevX;
-          playerCar.position.z = _prevZ;
-          carSpeed *= 0.1;
-          break;
+        const dx = playerCar.position.x - b.x;
+        const dz = playerCar.position.z - b.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist > 0 && dist < b.r + 1.5) {
+          playerCar.position.x -= (dx / dist) * (b.r + 1.5 - dist) * 0.6;
+          playerCar.position.z -= (dz / dist) * (b.r + 1.5 - dist) * 0.6;
+          carSpeed *= 0.2;
         }
       }
 
