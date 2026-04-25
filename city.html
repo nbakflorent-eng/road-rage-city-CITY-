@@ -209,7 +209,7 @@
       function _place(key, x, z, rotY, scl) {
         if (!_ok(x, z)) return;
         if (buildingBounds.some(b => Math.hypot(x-b.x, z-b.z) < 10)) return;
-        buildingBounds.push({ x, z, r: 7 });
+        buildingBounds.push({ x, z, r: 4 });
         _loadGLB(key, g => {
           if (!g) return;
           g.scale.setScalar(scl || 3);
@@ -257,7 +257,7 @@
         for (let k = 0; k < 3; k++) {
           const x = cx + (Math.random()*18-9), z = cz + (Math.random()*18-9);
           if (buildingBounds.some(b => Math.hypot(x-b.x, z-b.z) < 12)) continue;
-          buildingBounds.push({ x, z, r: 7 });
+          buildingBounds.push({ x, z, r: 4 });
           const key = _LOW[(bi*3+k) % _LOW.length];
           _loadGLB(key, g => {
             if (!g) return;
@@ -283,7 +283,7 @@
           const box = new THREE.Box3().setFromObject(g);
           g.position.y = -box.min.y; scene.add(g);
         });
-        buildingBounds.push({ x, z, r: 7 });
+        buildingBounds.push({ x, z, r: 4 });
       }
       let _bwi = 0;
       for (let t = -120; t <= 120; t += 13) {
@@ -637,7 +637,7 @@
       // ── Collision bâtiments (radiale) ──
       const _CAR_R = 2.5;
       for (const b of buildingBounds) {
-        if (Math.hypot(playerCar.position.x - b.x, playerCar.position.z - b.z) < (b.r||6) + _CAR_R) {
+        if (Math.hypot(playerCar.position.x - b.x, playerCar.position.z - b.z) < b.r) {
           playerCar.position.x = _prevX;
           playerCar.position.z = _prevZ;
           carSpeed *= 0.1;
