@@ -134,7 +134,6 @@
     //  CONSTANTES
     // ════════════════════════════════════════
     const BASE   = 'https://nbakflorent-eng.github.io/road-rage-city-CITY-/';
-    const TILE   = 12;
     const buildingBounds = [];
     const RD_POS = [-60, -20, 20, 60];
     const RD_W   = 12;
@@ -143,10 +142,9 @@
     let _s = 31337;
     function rnd() { _s = (_s * 1664525 + 1013904223) >>> 0; return _s / 4294967296; }
 
-    // ── Sol asphalte ──
     const groundMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(400, 400),
-      new THREE.MeshBasicMaterial({ color: 0x3d3d3d })
+      new THREE.PlaneGeometry(500, 500),
+      new THREE.MeshBasicMaterial({ color: 0x2a2a2a })
     );
     groundMesh.rotation.x = -Math.PI / 2;
     groundMesh.position.y = -0.05;
@@ -164,118 +162,142 @@
     }
 
     // ════════════════════════════════════════
-    //  ROUTES KENNEY GLB
+    //  ROUTES PROCÉDURALES
     // ════════════════════════════════════════
     function buildRoads() {
-      function _tile(key, x, z, rotY, scl) {
-        _loadGLB(key, g => {
-          if (!g) return;
-          g.scale.setScalar(scl || 6);
-          g.position.set(x, 0, z);
-          if (rotY) g.rotation.y = rotY;
-          const box = new THREE.Box3().setFromObject(g);
-          g.position.y = -box.min.y;
-          scene.add(g);
+      const matR = new THREE.MeshBasicMaterial({ color: 0x1a1a1a });
+      const matS = new THREE.MeshBasicMaterial({ color: 0xb0b0b0 });
+      const matD = new THREE.MeshBasicMaterial({ color: 0xFFD700 });
+      function _road(cx, cz, len, w, isH) {
+        const road = new THREE.Mesh(
+          new THREE.PlaneGeometry(isH ? len : w, isH ? w : len), matR);
+        road.rotation.x = -Math.PI / 2;
+        road.position.set(cx, 0.01, cz);
+        scene.add(road);
+        const off = w / 2 + 1.25;
+        [-1, 1].forEach(s => {
+          const sw = new THREE.Mesh(
+            new THREE.PlaneGeometry(isH ? len : 2.5, isH ? 2.5 : len), matS);
+          sw.rotation.x = -Math.PI / 2;
+          sw.position.set(isH ? cx : cx + s * off, 0.015, isH ? cz + s * off : cz);
+          scene.add(sw);
         });
+        const half = len / 2;
+        for (let t = -half + 1.5; t < half; t += 6) {
+          const d = new THREE.Mesh(
+            new THREE.PlaneGeometry(isH ? 3 : 0.3, isH ? 0.3 : 3), matD);
+          d.rotation.x = -Math.PI / 2;
+          d.position.set(isH ? cx + t : cx, 0.02, isH ? cz : cz + t);
+          scene.add(d);
+        }
       }
-      RD_POS.forEach(rz => {
-        for (let x = -84; x <= 84; x += TILE) {
-          if (!RD_POS.some(r => Math.abs(x - r) < TILE * 0.6)) _tile('road-straight.glb', x, rz, Math.PI / 2, 6);
-        }
-      });
-      RD_POS.forEach(rx => {
-        for (let z = -84; z <= 84; z += TILE) {
-          if (!RD_POS.some(r => Math.abs(z - r) < TILE * 0.6)) _tile('road-straight.glb', rx, z, 0, 6);
-        }
-      });
-      RD_POS.forEach(rx => RD_POS.forEach(rz => _tile('road-crossroad.glb', rx, rz, 0, 6)));
-      [[-40, -60, 60], [40, -20, 60]].forEach(([z, x1, x2]) => {
-        for (let x = x1; x <= x2; x += TILE) {
-          if (RD_POS.some(r => Math.abs(x - r) < TILE * 0.6)) _tile('road-intersection.glb', x, z, 0, 5);
-          else _tile('road-straight.glb', x, z, Math.PI / 2, 5);
-        }
-      });
-      [[-40, -60, 20], [40, -20, 60]].forEach(([x, z1, z2]) => {
-        for (let z = z1; z <= z2; z += TILE) {
-          if (RD_POS.some(r => Math.abs(z - r) < TILE * 0.6)) _tile('road-intersection.glb', x, z, 0, 5);
-          else _tile('road-straight.glb', x, z, 0, 5);
-        }
-      });
+      RD_POS.forEach(rz => _road(  0, rz, 250, 12, true));
+      RD_POS.forEach(rx => _road( rx,  0, 250, 12, false));
+      _road(-20, -40,  80, 8, true);
+      _road( 20,  40,  80, 8, true);
+      _road(-40, -20,  80, 8, false);
+      _road( 40,  20,  80, 8, false);
     }
     buildRoads();
 
     // ════════════════════════════════════════
-    //  BÂTIMENTS KENNEY GLB
+    //  BÂTIMENTS PAR ZONE
     // ════════════════════════════════════════
     function buildCity() {
       const _D = RD_W / 2 + 2;
-      function _ok(x, z) { return RD_POS.every(r => Math.abs(x - r) > _D && Math.abs(z - r) > _D); }
+      function _ok(x, z) { return RD_POS.every(r => Math.abs(x-r) > _D && Math.abs(z-r) > _D); }
       function _place(key, x, z, rotY, scl) {
+        if (!_ok(x, z)) return;
+        if (buildingBounds.some(b => Math.hypot(x-b.x, z-b.z) < 10)) return;
+        buildingBounds.push({ x, z, r: 7 });
         _loadGLB(key, g => {
           if (!g) return;
           g.scale.setScalar(scl || 3);
-          g.rotation.y = rotY || 0;
+          g.rotation.y = rotY;
           g.position.set(x, 0, z);
           const box = new THREE.Box3().setFromObject(g);
           g.position.y = -box.min.y;
           scene.add(g);
         });
-        buildingBounds.push({ x, z, r: 6 });
       }
-      const _SKY = ['building-skyscraper-a.glb','building-skyscraper-b.glb','building-skyscraper-c.glb','building-skyscraper-d.glb','building-skyscraper-e.glb'];
-      const _COM = 'abcdefghijklmn'.split('').map(c => `building-${c}.glb`);
-      const _TYP = 'abcdefghijklmnopqrstu'.split('').map(c => `building-type-${c}.glb`);
-      const _LOW = 'abcdefghijklmn'.split('').map(c => `low-detail-building-${c}.glb`).concat(['low-detail-building-wide-a.glb','low-detail-building-wide-b.glb']);
-      [[-40,-40],[0,-40],[40,-40],[-40,0],[40,0],[-40,40],[0,40],[40,40]].forEach(([bx,bz],bi) => {
-        for (let k=0; k<3; k++) {
-          const x=bx+(Math.random()*14-7), z=bz+(Math.random()*14-7);
-          if (_ok(x,z) && !buildingBounds.some(b=>Math.hypot(x-b.x,z-b.z)<10)) _place(_SKY[(bi*3+k)%5], x, z, Math.random()*Math.PI*2, 3);
-        }
-      });
-      [[-70,-70],[70,-70],[-70,70],[70,70],[-70,-20],[-70,20],[70,-20],[70,20],[-20,-70],[20,-70],[-20,70],[20,70]].forEach(([bx,bz],bi) => {
-        for (let k=0; k<4; k++) {
-          const x=bx+(Math.random()*12-6), z=bz+(Math.random()*12-6);
-          if (_ok(x,z) && !buildingBounds.some(b=>Math.hypot(x-b.x,z-b.z)<9)) _place(_COM[(bi*4+k)%14], x, z, Math.random()*Math.PI*2, 3);
-        }
-      });
-      for (let i=0; i<40; i++) {
-        const x=-90+Math.random()*180, z=-90+Math.random()*180;
-        if (_ok(x,z) && !buildingBounds.some(b=>Math.hypot(x-b.x,z-b.z)<10)) _place(_TYP[i%21], x, z, Math.random()*Math.PI*2, 3);
-      }
-      for (let i=0; i<30; i++) {
-        const x=-80+Math.random()*160, z=-80+Math.random()*160;
-        if (_ok(x,z) && !buildingBounds.some(b=>Math.hypot(x-b.x,z-b.z)<8)) _place(_LOW[i%_LOW.length], x, z, Math.random()*Math.PI*2, 3);
-      }
-    }
-    buildCity();
+      const _SKY  = ['building-skyscraper-a.glb','building-skyscraper-b.glb','building-skyscraper-c.glb','building-skyscraper-d.glb','building-skyscraper-e.glb'];
+      const _COM  = 'abcdefgh'.split('').map(c => `building-${c}.glb`);
+      const _TYPA = 'abcdefgh'.split('').map(c => `building-type-${c}.glb`);
+      const _TYPB = 'ijklmnopqrstu'.split('').map(c => `building-type-${c}.glb`);
+      const _LOW  = 'abcdefghijklmn'.split('').map(c => `low-detail-building-${c}.glb`)
+                    .concat(['low-detail-building-wide-a.glb','low-detail-building-wide-b.glb']);
 
-    // ════════════════════════════════════════
-    //  MUR DE BORDURE
-    // ════════════════════════════════════════
-    function spawnBorderWall() {
-      const _SKY = ['building-skyscraper-a.glb','building-skyscraper-b.glb','building-skyscraper-c.glb','building-skyscraper-d.glb','building-skyscraper-e.glb'];
-      const _LOW = 'abcdefghijklmn'.split('').map(c => `low-detail-building-${c}.glb`);
-      function _w(x, z, rotY, idx) {
-        const key = idx%2===0 ? _SKY[idx%5] : _LOW[idx%14];
-        const scl = idx%2===0 ? 5 : 4;
+      // CENTRE-VILLE — gratte-ciels, scale 4
+      [[-8,-8],[8,-8],[-8,8],[8,8]].forEach(([ox,oz], i) => {
+        _place(_SKY[i%5], ox+(Math.random()-0.5)*3, oz+(Math.random()-0.5)*3, Math.random()*Math.PI*2, 4);
+      });
+
+      // COMMERCIALE — 3 par bloc ×2
+      [[-40,0],[40,0]].forEach(([cx,cz], bi) => {
+        for (let k = 0; k < 3; k++)
+          _place(_COM[(bi*3+k)%8], cx+(Math.random()*16-8), cz+(Math.random()*16-8), Math.random()*Math.PI*2, 3);
+      });
+
+      // RÉSIDENTIELLE NORD — 5 par bloc ×3, scale 2.5
+      [[-40,-40],[0,-40],[40,-40]].forEach(([cx,cz], bi) => {
+        for (let k = 0; k < 5; k++)
+          _place(_TYPA[(bi*5+k)%8], cx+(Math.random()*16-8), cz+(Math.random()*16-8), Math.random()*Math.PI*2, 2.5);
+      });
+
+      // RÉSIDENTIELLE SUD — 5 par bloc ×3, scale 2.5
+      [[-40,40],[0,40],[40,40]].forEach(([cx,cz], bi) => {
+        for (let k = 0; k < 5; k++)
+          _place(_TYPB[(bi*5+k)%13], cx+(Math.random()*16-8), cz+(Math.random()*16-8), Math.random()*Math.PI*2, 2.5);
+      });
+
+      // INDUSTRIELLE OUEST — entrepôts, scale 3.5, espacés
+      const _indBlocs = [[-80,-40],[-80,0],[-80,40]];
+      for (let bi = 0; bi < _indBlocs.length; bi++) {
+        const [cx, cz] = _indBlocs[bi];
+        for (let k = 0; k < 3; k++) {
+          const x = cx + (Math.random()*18-9), z = cz + (Math.random()*18-9);
+          if (buildingBounds.some(b => Math.hypot(x-b.x, z-b.z) < 12)) continue;
+          buildingBounds.push({ x, z, r: 7 });
+          const key = _LOW[(bi*3+k) % _LOW.length];
+          _loadGLB(key, g => {
+            if (!g) return;
+            g.scale.setScalar(3.5); g.rotation.y = Math.random()*Math.PI*2;
+            g.position.set(x, 0, z);
+            const box = new THREE.Box3().setFromObject(g);
+            g.position.y = -box.min.y; scene.add(g);
+          });
+        }
+      }
+
+      // PÉRIPHÉRIE — double rangée pour cacher les limites
+      const _BSKY = ['building-skyscraper-a.glb','building-skyscraper-b.glb','building-skyscraper-c.glb'];
+      const _BLOW = ['low-detail-building-a.glb','low-detail-building-b.glb','low-detail-building-c.glb','low-detail-building-d.glb'];
+      function _bw(x, z, rotY, ti) {
+        const k = ti % 2;
+        const key = k === 0 ? _BSKY[ti % 3] : _BLOW[ti % 4];
+        const scl = k === 0 ? 5 : 4;
         _loadGLB(key, g => {
           if (!g) return;
           g.scale.setScalar(scl); g.rotation.y = rotY;
           g.position.set(x, 0, z);
-          const box = new THREE.Box3().setFromObject(g); g.position.y = -box.min.y;
-          scene.add(g);
+          const box = new THREE.Box3().setFromObject(g);
+          g.position.y = -box.min.y; scene.add(g);
         });
         buildingBounds.push({ x, z, r: 7 });
       }
-      let idx = 0;
-      [[-110,0],[-135,0],[110,Math.PI],[135,Math.PI]].forEach(([zd,rotY]) => {
-        for (let x=-100; x<=100; x+=13) _w(x + (Math.abs(zd)===135 ? Math.random()*8-4 : 0), zd, rotY, idx++);
-      });
-      [[110,-Math.PI/2],[135,-Math.PI/2],[-110,Math.PI/2],[-135,Math.PI/2]].forEach(([xd,rotY]) => {
-        for (let z=-100; z<=100; z+=13) _w(xd, z + (Math.abs(xd)===135 ? Math.random()*8-4 : 0), rotY, idx++);
-      });
+      let _bwi = 0;
+      for (let t = -120; t <= 120; t += 13) {
+        _bw(t,    110, Math.PI,     _bwi++);
+        _bw(t,    123, Math.PI,     _bwi++);
+        _bw(t,   -110, 0,           _bwi++);
+        _bw(t,   -123, 0,           _bwi++);
+        _bw( 110, t,  -Math.PI/2,   _bwi++);
+        _bw( 123, t,  -Math.PI/2,   _bwi++);
+        _bw(-110, t,   Math.PI/2,   _bwi++);
+        _bw(-123, t,   Math.PI/2,   _bwi++);
+      }
     }
-    spawnBorderWall();
+    buildCity();
 
     // ════════════════════════════════════════
     //  VÉGÉTATION
