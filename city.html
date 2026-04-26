@@ -209,71 +209,90 @@
     // ════════════════════════════════════════
     //  BÂTIMENTS
     // ════════════════════════════════════════
-    function loadBuilding(filename, x, z, scale, rotY, boundRadius) {
+    function loadBuilding(filename, x, z, scale, rotY, hw, hd) {
       _loadGLB(filename, g => {
         if (!g) return;
         g.scale.setScalar(scale);
-        g.position.set(x, 0, z);
         g.rotation.y = rotY;
-        const box = new THREE.Box3().setFromObject(g);
-        g.position.y = -box.min.y;
         scene.add(g);
-        buildingBounds.push({ x, z, r: boundRadius });
+        const box = new THREE.Box3().setFromObject(g);
+        g.position.set(x, -box.min.y, z);
+        buildingBounds.push({ x, z, hw: hw || 4, hd: hd || 4 });
       });
     }
 
     function createDowntown() {
+      // Grille intérieure {±20, ±60} × {±20, ±60} — aucune position sur route
       [
-        { file: 'building-skyscraper-a.glb', x: -60, z: -60, s: 5.4, ry: 0 },
-        { file: 'building-skyscraper-b.glb', x: -20, z: -60, s: 6.0, ry: Math.PI/2 },
-        { file: 'building-skyscraper-c.glb', x:  20, z: -60, s: 5.7, ry: 0 },
-        { file: 'building-skyscraper-d.glb', x:  60, z: -60, s: 6.3, ry: Math.PI },
-        { file: 'building-skyscraper-e.glb', x: -60, z: -20, s: 5.4, ry: Math.PI/2 },
-        { file: 'building-skyscraper-a.glb', x:  60, z: -20, s: 6.0, ry: 0 },
-        { file: 'building-skyscraper-b.glb', x: -60, z:  20, s: 5.7, ry: 0 },
-        { file: 'building-skyscraper-c.glb', x:  60, z:  20, s: 6.0, ry: Math.PI },
-        { file: 'building-skyscraper-d.glb', x: -60, z:  60, s: 5.4, ry: Math.PI/2 },
-        { file: 'building-skyscraper-e.glb', x: -20, z:  60, s: 6.3, ry: 0 },
-        { file: 'building-skyscraper-a.glb', x:  20, z:  60, s: 5.4, ry: Math.PI },
-        { file: 'building-skyscraper-b.glb', x:  60, z:  60, s: 6.0, ry: Math.PI/2 },
-        { file: 'building-a.glb', x: -20, z: -20, s: 4.8, ry: 0 },
-        { file: 'building-b.glb', x:  20, z: -20, s: 4.5, ry: Math.PI/2 },
-        { file: 'building-c.glb', x: -20, z:  20, s: 4.8, ry: Math.PI },
-        { file: 'building-d.glb', x:  20, z:  20, s: 4.5, ry: 0 },
-      ].forEach(b => loadBuilding(b.file, b.x, b.z, b.s, b.ry, 7));
+        // z = -60
+        { f:'building-skyscraper-a.glb', x:-60, z:-60, s:5.5, ry:0,            hw:6, hd:6 },
+        { f:'building-skyscraper-b.glb', x:-20, z:-60, s:6.0, ry:Math.PI/2,    hw:6, hd:6 },
+        { f:'building-skyscraper-c.glb', x: 20, z:-60, s:5.8, ry:0,            hw:6, hd:6 },
+        { f:'building-skyscraper-d.glb', x: 60, z:-60, s:6.2, ry:Math.PI,      hw:6, hd:6 },
+        // z = -20
+        { f:'building-skyscraper-e.glb', x:-60, z:-20, s:5.5, ry:Math.PI/2,    hw:6, hd:6 },
+        { f:'building-a.glb',            x:-20, z:-20, s:5.0, ry:Math.PI,      hw:5, hd:5 },
+        { f:'building-b.glb',            x: 20, z:-20, s:5.0, ry:0,            hw:5, hd:5 },
+        { f:'building-skyscraper-a.glb', x: 60, z:-20, s:6.0, ry:-Math.PI/2,  hw:6, hd:6 },
+        // z = 20
+        { f:'building-skyscraper-b.glb', x:-60, z: 20, s:5.8, ry:0,            hw:6, hd:6 },
+        { f:'building-c.glb',            x:-20, z: 20, s:5.0, ry:Math.PI/2,    hw:5, hd:5 },
+        { f:'building-d.glb',            x: 20, z: 20, s:5.0, ry:Math.PI,      hw:5, hd:5 },
+        { f:'building-skyscraper-c.glb', x: 60, z: 20, s:6.0, ry:Math.PI,      hw:6, hd:6 },
+        // z = 60
+        { f:'building-skyscraper-d.glb', x:-60, z: 60, s:6.2, ry:0,            hw:6, hd:6 },
+        { f:'building-skyscraper-e.glb', x:-20, z: 60, s:5.5, ry:Math.PI/2,    hw:6, hd:6 },
+        { f:'building-skyscraper-a.glb', x: 20, z: 60, s:5.8, ry:Math.PI,      hw:6, hd:6 },
+        { f:'building-skyscraper-b.glb', x: 60, z: 60, s:6.0, ry:-Math.PI/2,  hw:6, hd:6 },
+      ].forEach(b => loadBuilding(b.f, b.x, b.z, b.s, b.ry, b.hw, b.hd));
     }
 
     function createSuburbs() {
+      // Anneau extérieur : |x|=100 ou |z|=100, jamais x/z=0/±40/±80/±120
       [
-        { file: 'building-type-a.glb', x: -100, z: -100, s: 3.0,  ry: 0 },
-        { file: 'building-type-b.glb', x:  -60, z: -100, s: 3.25, ry: Math.PI/2 },
-        { file: 'building-type-c.glb', x:  -20, z: -100, s: 2.75, ry: 0 },
-        { file: 'building-type-d.glb', x:   20, z: -100, s: 3.0,  ry: Math.PI },
-        { file: 'building-type-e.glb', x:   60, z: -100, s: 3.25, ry: Math.PI/2 },
-        { file: 'building-type-f.glb', x:  100, z: -100, s: 2.75, ry: 0 },
-        { file: 'building-type-g.glb', x: -100, z:  100, s: 3.0,  ry: Math.PI },
-        { file: 'building-type-h.glb', x:  -60, z:  100, s: 3.25, ry: 0 },
-        { file: 'building-type-i.glb', x:  -20, z:  100, s: 2.75, ry: Math.PI/2 },
-        { file: 'building-type-j.glb', x:   20, z:  100, s: 3.0,  ry: Math.PI },
-        { file: 'building-type-k.glb', x:   60, z:  100, s: 3.25, ry: 0 },
-        { file: 'building-type-l.glb', x:  100, z:  100, s: 2.75, ry: Math.PI/2 },
-        { file: 'building-type-m.glb', x: -100, z:  -60, s: 3.0,  ry: Math.PI/2 },
-        { file: 'building-type-n.glb', x: -100, z:  -20, s: 3.25, ry: 0 },
-        { file: 'building-type-o.glb', x: -100, z:   20, s: 2.75, ry: Math.PI },
-        { file: 'building-type-p.glb', x: -100, z:   60, s: 3.0,  ry: Math.PI/2 },
-        { file: 'building-type-q.glb', x:  100, z:  -60, s: 3.0,  ry: 0 },
-        { file: 'building-type-r.glb', x:  100, z:  -20, s: 3.25, ry: Math.PI/2 },
-        { file: 'building-type-s.glb', x:  100, z:   20, s: 2.75, ry: 0 },
-        { file: 'building-type-u.glb', x:  100, z:   60, s: 3.0,  ry: Math.PI },
-        { file: 'low-detail-building-a.glb',      x: -100, z: -100, s: 2.5, ry: 0 },
-        { file: 'low-detail-building-b.glb',      x:    0, z: -100, s: 2.5, ry: 0 },
-        { file: 'low-detail-building-c.glb',      x:  100, z: -100, s: 2.5, ry: 0 },
-        { file: 'low-detail-building-d.glb',      x: -100, z:    0, s: 2.5, ry: Math.PI/2 },
-        { file: 'low-detail-building-e.glb',      x:  100, z:    0, s: 2.5, ry: Math.PI/2 },
-        { file: 'low-detail-building-f.glb',      x: -100, z:  100, s: 2.5, ry: Math.PI },
-        { file: 'low-detail-building-wide-a.glb', x:    0, z:  100, s: 2.5, ry: Math.PI },
-        { file: 'low-detail-building-wide-b.glb', x:  100, z:  100, s: 2.5, ry: Math.PI },
-      ].forEach(b => loadBuilding(b.file, b.x, b.z, b.s, b.ry, 5));
+        // === NORD (z=-100) — 6 îlots ===
+        { f:'building-type-a.glb',            x:-100, z:-100, s:3.0,  ry:0,           hw:4, hd:4 },
+        { f:'building-type-b.glb',            x: -60, z:-100, s:3.2,  ry:Math.PI/2,   hw:4, hd:4 },
+        { f:'building-type-c.glb',            x: -20, z:-100, s:2.8,  ry:0,           hw:4, hd:4 },
+        { f:'building-type-d.glb',            x:  20, z:-100, s:3.0,  ry:Math.PI,     hw:4, hd:4 },
+        { f:'building-type-e.glb',            x:  60, z:-100, s:3.2,  ry:Math.PI/2,   hw:4, hd:4 },
+        { f:'building-type-f.glb',            x: 100, z:-100, s:2.8,  ry:0,           hw:4, hd:4 },
+        // === SUD (z=100) — 6 îlots ===
+        { f:'building-type-g.glb',            x:-100, z: 100, s:3.0,  ry:Math.PI,     hw:4, hd:4 },
+        { f:'building-type-h.glb',            x: -60, z: 100, s:3.2,  ry:0,           hw:4, hd:4 },
+        { f:'building-type-i.glb',            x: -20, z: 100, s:2.8,  ry:Math.PI/2,   hw:4, hd:4 },
+        { f:'building-type-j.glb',            x:  20, z: 100, s:3.0,  ry:Math.PI,     hw:4, hd:4 },
+        { f:'building-type-k.glb',            x:  60, z: 100, s:3.2,  ry:0,           hw:4, hd:4 },
+        { f:'building-type-l.glb',            x: 100, z: 100, s:2.8,  ry:Math.PI/2,   hw:4, hd:4 },
+        // === OUEST (x=-100) — 4 îlots ===
+        { f:'building-type-m.glb',            x:-100, z: -60, s:2.8,  ry:Math.PI/2,   hw:4, hd:4 },
+        { f:'building-type-n.glb',            x:-100, z: -20, s:3.0,  ry:0,           hw:4, hd:4 },
+        { f:'building-type-o.glb',            x:-100, z:  20, s:2.8,  ry:Math.PI,     hw:4, hd:4 },
+        { f:'building-type-p.glb',            x:-100, z:  60, s:3.0,  ry:Math.PI/2,   hw:4, hd:4 },
+        // === EST (x=100) — 4 îlots ===
+        { f:'building-type-q.glb',            x: 100, z: -60, s:2.8,  ry:-Math.PI/2,  hw:4, hd:4 },
+        { f:'building-type-r.glb',            x: 100, z: -20, s:3.0,  ry:0,           hw:4, hd:4 },
+        { f:'building-type-s.glb',            x: 100, z:  20, s:2.8,  ry:Math.PI,     hw:4, hd:4 },
+        { f:'building-type-u.glb',            x: 100, z:  60, s:3.0,  ry:-Math.PI/2,  hw:4, hd:4 },
+        // === LOW-DETAIL — coins et façades larges ===
+        { f:'low-detail-building-a.glb',      x:-100, z:-100, s:2.8,  ry:0,           hw:5, hd:5 },
+        { f:'low-detail-building-b.glb',      x: 100, z:-100, s:2.8,  ry:0,           hw:5, hd:5 },
+        { f:'low-detail-building-c.glb',      x:-100, z: 100, s:2.8,  ry:Math.PI,     hw:5, hd:5 },
+        { f:'low-detail-building-d.glb',      x: 100, z: 100, s:2.8,  ry:Math.PI,     hw:5, hd:5 },
+        { f:'low-detail-building-e.glb',      x: -60, z:-100, s:2.5,  ry:0,           hw:4, hd:3 },
+        { f:'low-detail-building-f.glb',      x:  60, z:-100, s:2.5,  ry:0,           hw:4, hd:3 },
+        { f:'low-detail-building-wide-a.glb', x: -20, z:-100, s:2.5,  ry:0,           hw:5, hd:3 },
+        { f:'low-detail-building-wide-b.glb', x:  20, z:-100, s:2.5,  ry:0,           hw:5, hd:3 },
+        // === TRANSITION — îlots intermédiaires entre downtown et périphérie ===
+        { f:'building-e.glb',                 x: -60, z:-100, s:3.0,  ry:Math.PI/2,   hw:3, hd:3 },
+        { f:'building-a.glb',                 x:  60, z:-100, s:3.0,  ry:Math.PI/2,   hw:3, hd:3 },
+        { f:'building-b.glb',                 x: -60, z: 100, s:3.0,  ry:-Math.PI/2,  hw:3, hd:3 },
+        { f:'building-c.glb',                 x:  60, z: 100, s:3.0,  ry:-Math.PI/2,  hw:3, hd:3 },
+        { f:'building-d.glb',                 x:-100, z: -60, s:3.0,  ry:0,           hw:3, hd:3 },
+        { f:'building-e.glb',                 x:-100, z:  60, s:3.0,  ry:Math.PI,     hw:3, hd:3 },
+        { f:'building-a.glb',                 x: 100, z: -60, s:3.0,  ry:0,           hw:3, hd:3 },
+        { f:'building-b.glb',                 x: 100, z:  60, s:3.0,  ry:Math.PI,     hw:3, hd:3 },
+      ].forEach(b => loadBuilding(b.f, b.x, b.z, b.s, b.ry, b.hw, b.hd));
     }
 
     buildingBounds = [];
@@ -328,90 +347,6 @@
       });
     })();
 
-    // ════════════════════════════════════════
-    //  VOITURES PNJ — Kenney GLB chargés via URL relative
-    //  sedan/suv/taxi/van/hatchback-sports ×3
-    //  delivery/truck/sedan-sports/suv-luxury ×2
-    //  police ×2  ambulance/firetruck ×1  → 20 voitures
-    // ════════════════════════════════════════
-
-    // ── GLTFLoader — URL absolue + résolution texture depuis racine du repo ──
-
-    // Normalise : scale=1.5 (ou 0.008 pour police_car), grounded y=0, ombres
-    function _normalizeKenney(model, key) {
-      model.position.set(0, 0, 0);
-      model.rotation.set(0, 0, 0);
-      const s = key === 'police_car' ? 0.008 : 1.5;
-      model.scale.set(s, s, s);
-      const box = new THREE.Box3().setFromObject(model);
-      model.position.y = -box.min.y;
-    }
-
-    // ── Tableau pondéré — pool total 27 slots ──
-    const KENNEY_DEFS = [
-      { key:'sedan',            freq:3 },
-      { key:'suv',              freq:3 },
-      { key:'taxi',             freq:3 },
-      { key:'van',              freq:3 },
-      { key:'hatchback-sports', freq:3 },
-      { key:'delivery',         freq:2 },
-      { key:'truck',            freq:2 },
-      { key:'sedan-sports',     freq:2 },
-      { key:'suv-luxury',       freq:2 },
-      { key:'police',           freq:1 },
-      { key:'ambulance',        freq:1 },
-      { key:'firetruck',        freq:1 },
-      { key:'police_car',       freq:2 },
-    ];
-    const NPC_ROUTES = RD_POS.flatMap(r => [{ axis:'x', fixed:r }, { axis:'z', fixed:r }]);
-    const NPC_BOUND = WORLD / 2 - 3;
-    const npcCars   = [];
-    const _npcTmpl  = {};
-    let   _npcLoadIdx = 0;
-
-    function _buildWeightedPool(defs, loaded) {
-      const pool = [];
-      defs.forEach(d => { if (loaded[d.key]) for (let i = 0; i < d.freq; i++) pool.push(d); });
-      return pool;
-    }
-
-    function _npcPlaceModel(tmplModel) {
-      const mesh  = (typeof THREE.SkeletonUtils !== 'undefined')
-                      ? THREE.SkeletonUtils.clone(tmplModel)
-                      : tmplModel.clone(true);
-      const route = NPC_ROUTES[Math.floor(rnd() * NPC_ROUTES.length)];
-      const dir   = rnd() < 0.5 ? 1 : -1;
-      const t     = (rnd() * 2 - 1) * NPC_BOUND;
-      const speed = 6 + rnd() * 8;  // 6–14 u/s
-      if (route.axis === 'x') {
-        mesh.position.set(t, 0, route.fixed + dir * 3);
-        mesh.rotation.y = dir > 0 ?  Math.PI / 2 : -Math.PI / 2; // +x → face est, -x → face ouest
-      } else {
-        mesh.position.set(route.fixed - dir * 3, 0, t);
-        mesh.rotation.y = dir > 0 ? 0 : Math.PI;
-      }
-      scene.add(mesh);
-      npcCars.push({ mesh, route, dir, t, speed });
-    }
-
-    function _npcSpawnAll() {
-      const pool = _buildWeightedPool(KENNEY_DEFS, _npcTmpl);
-      if (!pool.length) { console.warn('Aucun GLB chargé — PNJ absents'); return; }
-      for (let i = 0; i < 5; i++) {
-        const def = pool[Math.floor(rnd() * pool.length)];
-        _npcPlaceModel(_npcTmpl[def.key]);
-      }
-    }
-
-    function _npcLoadNext() {
-      if (_npcLoadIdx >= KENNEY_DEFS.length) { _npcSpawnAll(); return; }
-      const def = KENNEY_DEFS[_npcLoadIdx++];
-      _loadGLB(def.key + '.glb', m => {
-        if (m) { _normalizeKenney(m, def.key); _npcTmpl[def.key] = m; }
-        _npcLoadNext();
-      });
-    }
-    _npcLoadNext(); // démarre le chargement GLB asynchrone
 
     // ════════════════════════════════════════
     //  VOITURE JOUEUR
@@ -490,7 +425,7 @@
       playerCar.add(wg);
     });
 
-    playerCar.position.set(10, 0.5, 10);
+    playerCar.position.set(0, 0.5, -30);
     scene.add(playerCar);
 
     // ════════════════════════════════════════
@@ -563,15 +498,27 @@
       playerCar.position.x = Math.max(-BOUND, Math.min(BOUND, playerCar.position.x));
       playerCar.position.z = Math.max(-BOUND, Math.min(BOUND, playerCar.position.z));
 
-      // ── Collision bâtiments (push-back) ──
+      // ── Collision bâtiments — AABB précise ──
       for (const b of buildingBounds) {
-        const dx = playerCar.position.x - b.x;
-        const dz = playerCar.position.z - b.z;
-        const dist = Math.sqrt(dx * dx + dz * dz);
-        if (dist > 0 && dist < b.r + 1.5) {
-          playerCar.position.x -= (dx / dist) * (b.r + 1.5 - dist) * 0.6;
-          playerCar.position.z -= (dz / dist) * (b.r + 1.5 - dist) * 0.6;
-          carSpeed *= 0.2;
+        const hw = b.hw || 4;
+        const hd = b.hd || 4;
+        const mg = 1.2;
+        if (
+          playerCar.position.x > b.x - hw - mg &&
+          playerCar.position.x < b.x + hw + mg &&
+          playerCar.position.z > b.z - hd - mg &&
+          playerCar.position.z < b.z + hd + mg
+        ) {
+          const oL = (b.x - hw - mg) - playerCar.position.x;
+          const oR = playerCar.position.x - (b.x + hw + mg);
+          const oF = (b.z - hd - mg) - playerCar.position.z;
+          const oB = playerCar.position.z - (b.z + hd + mg);
+          const min = Math.max(oL, oR, oF, oB);
+          if (min === oL) playerCar.position.x = b.x - hw - mg;
+          else if (min === oR) playerCar.position.x = b.x + hw + mg;
+          else if (min === oF) playerCar.position.z = b.z - hd - mg;
+          else                 playerCar.position.z = b.z + hd + mg;
+          carSpeed *= 0.1;
         }
       }
 
@@ -588,47 +535,6 @@
 
       // ── Feux de circulation ──
       _updateTrafficLights(dt);
-
-      // ── PNJ ──
-      npcCars.forEach((npc, idx) => {
-        // Blocage : même route uniquement (même axis + même fixed)
-        let tooClose = false;
-        for (let j = 0; j < npcCars.length; j++) {
-          if (j === idx) continue;
-          const o = npcCars[j];
-          if (o.route.axis !== npc.route.axis || o.route.fixed !== npc.route.fixed) continue;
-          const ahead = (o.t - npc.t) * npc.dir;
-          if (ahead > 0 && ahead < 10) { tooClose = true; break; }
-        }
-        if (tooClose) {
-          npc.curSpeed = Math.max(0, (npc.curSpeed !== undefined ? npc.curSpeed : npc.speed) * 0.7);
-          npc.stuckTimer = (npc.stuckTimer || 0) + dt;
-          if (npc.stuckTimer >= 3) {
-            npc.t = npc.dir > 0 ? -80 : 80;
-            npc.stuckTimer = 0; npc.curSpeed = npc.speed;
-            if (npc.route.axis === 'x') npc.mesh.position.set(npc.t, 0, npc.route.fixed);
-            else                         npc.mesh.position.set(npc.route.fixed, 0, npc.t);
-          }
-        } else {
-          npc.curSpeed = Math.min(npc.speed, (npc.curSpeed !== undefined ? npc.curSpeed : npc.speed) * 1.2);
-          npc.stuckTimer = 0;
-        }
-        // Arrêt aux intersections selon phase du feu
-        if (RD_POS.some(r => Math.abs(npc.t - r) < 8) && Math.sin(Date.now() * 0.001 + idx) > 0) return;
-        // Position candidate
-        const newT = npc.t + npc.dir * npc.curSpeed * dt;
-        // Déplacement validé + rebouclage
-        npc.t = newT;
-        if (npc.t >  NPC_BOUND) npc.t -= NPC_BOUND * 2;
-        if (npc.t < -NPC_BOUND) npc.t += NPC_BOUND * 2;
-        if (npc.route.axis === 'x') {
-          npc.mesh.position.x = npc.t;
-          npc.mesh.position.z = npc.route.fixed;
-        } else {
-          npc.mesh.position.z = npc.t;
-          npc.mesh.position.x = npc.route.fixed;
-        }
-      });
 
       // ── HUD vitesse (km/h) ──
       document.getElementById('speed-display').textContent =
@@ -656,8 +562,9 @@
       buildingBounds.forEach(b => {
         ctx.fillStyle = (Math.abs(b.x)>90 || Math.abs(b.z)>90) ? '#555555' : '#8B7355';
         const mx = b.x * scale + cx, mz = b.z * scale + cy;
-        const r = Math.max(2, (b.r||6)*scale);
-        ctx.fillRect(mx - r, mz - r, r*2, r*2);
+        const rw = Math.max(2, (b.hw||4)*scale);
+        const rh = Math.max(2, (b.hd||4)*scale);
+        ctx.fillRect(mx - rw, mz - rh, rw*2, rh*2);
       });
       // Joueur — triangle directionnel
       const px = playerCar.position.x * scale + cx;
