@@ -167,7 +167,7 @@
     function createRoadGrid() {
       const roadMat     = new THREE.MeshLambertMaterial({ color: 0x1a1a1a });
       const lineMat     = new THREE.MeshLambertMaterial({ color: 0xFFDD00 });
-      const sidewalkMat = new THREE.MeshLambertMaterial({ color: 0x888888 });
+      const sidewalkMat = new THREE.MeshLambertMaterial({ color: 0x6b6b6b });
       const roadWidth = 14, roadLength = 280;
       const hRoads = [-120, -80, -40, 0, 40, 80, 120];
       const vRoads = [-120, -80, -40, 0, 40, 80, 120];
@@ -180,13 +180,13 @@
         const m = new THREE.Mesh(new THREE.PlaneGeometry(roadLength, roadWidth), roadMat);
         m.rotation.x = -Math.PI / 2; m.position.set(0, 0.01, z); scene.add(m);
         [-1, 1].forEach(s => {
-          const sw = new THREE.Mesh(new THREE.PlaneGeometry(roadLength, 3), sidewalkMat);
+          const sw = new THREE.Mesh(new THREE.PlaneGeometry(roadLength, 1.5), sidewalkMat);
           sw.rotation.x = -Math.PI / 2;
-          sw.position.set(0, 0.02, z + s * (roadWidth / 2 + 1.5));
+          sw.position.set(0, 0.02, z + s * (roadWidth / 2 + 0.75));
           scene.add(sw);
         });
-        for (let x = -130; x < 130; x += 10) {
-          const dash = new THREE.Mesh(new THREE.PlaneGeometry(5, 0.4), lineMat);
+        for (let x = -130; x < 130; x += 8) {
+          const dash = new THREE.Mesh(new THREE.PlaneGeometry(3, 0.25), lineMat);
           dash.rotation.x = -Math.PI / 2; dash.position.set(x, 0.05, z); scene.add(dash);
         }
       });
@@ -194,13 +194,13 @@
         const m = new THREE.Mesh(new THREE.PlaneGeometry(roadWidth, roadLength), roadMat);
         m.rotation.x = -Math.PI / 2; m.position.set(x, 0.01, 0); scene.add(m);
         [-1, 1].forEach(s => {
-          const sw = new THREE.Mesh(new THREE.PlaneGeometry(3, roadLength), sidewalkMat);
+          const sw = new THREE.Mesh(new THREE.PlaneGeometry(1.5, roadLength), sidewalkMat);
           sw.rotation.x = -Math.PI / 2;
-          sw.position.set(x + s * (roadWidth / 2 + 1.5), 0.02, 0);
+          sw.position.set(x + s * (roadWidth / 2 + 0.75), 0.02, 0);
           scene.add(sw);
         });
-        for (let z = -130; z < 130; z += 10) {
-          const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 5), lineMat);
+        for (let z = -130; z < 130; z += 8) {
+          const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.25, 3), lineMat);
           dash.rotation.x = -Math.PI / 2; dash.position.set(x, 0.05, z); scene.add(dash);
         }
       });
@@ -224,56 +224,55 @@
 
     function createDowntown() {
       [
-        { file: 'building-skyscraper-a.glb', x: -60, z: -60, s: 1.8, ry: 0 },
-        { file: 'building-skyscraper-b.glb', x: -20, z: -60, s: 2.0, ry: Math.PI/2 },
-        { file: 'building-skyscraper-c.glb', x:  20, z: -60, s: 1.9, ry: 0 },
-        { file: 'building-skyscraper-d.glb', x:  60, z: -60, s: 2.1, ry: Math.PI },
-        { file: 'building-skyscraper-e.glb', x: -60, z: -20, s: 1.8, ry: Math.PI/2 },
-        { file: 'building-skyscraper-a.glb', x:  60, z: -20, s: 2.0, ry: 0 },
-        { file: 'building-skyscraper-b.glb', x: -60, z:  20, s: 1.9, ry: 0 },
-        { file: 'building-skyscraper-c.glb', x:  60, z:  20, s: 2.0, ry: Math.PI },
-        { file: 'building-skyscraper-d.glb', x: -60, z:  60, s: 1.8, ry: Math.PI/2 },
-        { file: 'building-skyscraper-e.glb', x: -20, z:  60, s: 2.1, ry: 0 },
-        { file: 'building-skyscraper-a.glb', x:  20, z:  60, s: 1.8, ry: Math.PI },
-        { file: 'building-skyscraper-b.glb', x:  60, z:  60, s: 2.0, ry: Math.PI/2 },
-        { file: 'building-a.glb', x: -20, z: -20, s: 1.6, ry: 0 },
-        { file: 'building-b.glb', x:  20, z: -20, s: 1.5, ry: Math.PI/2 },
-        { file: 'building-c.glb', x: -20, z:  20, s: 1.6, ry: Math.PI },
-        { file: 'building-d.glb', x:  20, z:  20, s: 1.5, ry: 0 },
-        { file: 'building-e.glb', x:   0, z:   0, s: 1.4, ry: Math.PI/4 },
+        { file: 'building-skyscraper-a.glb', x: -60, z: -60, s: 5.4, ry: 0 },
+        { file: 'building-skyscraper-b.glb', x: -20, z: -60, s: 6.0, ry: Math.PI/2 },
+        { file: 'building-skyscraper-c.glb', x:  20, z: -60, s: 5.7, ry: 0 },
+        { file: 'building-skyscraper-d.glb', x:  60, z: -60, s: 6.3, ry: Math.PI },
+        { file: 'building-skyscraper-e.glb', x: -60, z: -20, s: 5.4, ry: Math.PI/2 },
+        { file: 'building-skyscraper-a.glb', x:  60, z: -20, s: 6.0, ry: 0 },
+        { file: 'building-skyscraper-b.glb', x: -60, z:  20, s: 5.7, ry: 0 },
+        { file: 'building-skyscraper-c.glb', x:  60, z:  20, s: 6.0, ry: Math.PI },
+        { file: 'building-skyscraper-d.glb', x: -60, z:  60, s: 5.4, ry: Math.PI/2 },
+        { file: 'building-skyscraper-e.glb', x: -20, z:  60, s: 6.3, ry: 0 },
+        { file: 'building-skyscraper-a.glb', x:  20, z:  60, s: 5.4, ry: Math.PI },
+        { file: 'building-skyscraper-b.glb', x:  60, z:  60, s: 6.0, ry: Math.PI/2 },
+        { file: 'building-a.glb', x: -20, z: -20, s: 4.8, ry: 0 },
+        { file: 'building-b.glb', x:  20, z: -20, s: 4.5, ry: Math.PI/2 },
+        { file: 'building-c.glb', x: -20, z:  20, s: 4.8, ry: Math.PI },
+        { file: 'building-d.glb', x:  20, z:  20, s: 4.5, ry: 0 },
       ].forEach(b => loadBuilding(b.file, b.x, b.z, b.s, b.ry, 7));
     }
 
     function createSuburbs() {
       [
-        { file: 'building-type-a.glb', x: -100, z: -100, s: 1.2, ry: 0 },
-        { file: 'building-type-b.glb', x:  -60, z: -100, s: 1.3, ry: Math.PI/2 },
-        { file: 'building-type-c.glb', x:  -20, z: -100, s: 1.1, ry: 0 },
-        { file: 'building-type-d.glb', x:   20, z: -100, s: 1.2, ry: Math.PI },
-        { file: 'building-type-e.glb', x:   60, z: -100, s: 1.3, ry: Math.PI/2 },
-        { file: 'building-type-f.glb', x:  100, z: -100, s: 1.1, ry: 0 },
-        { file: 'building-type-g.glb', x: -100, z:  100, s: 1.2, ry: Math.PI },
-        { file: 'building-type-h.glb', x:  -60, z:  100, s: 1.3, ry: 0 },
-        { file: 'building-type-i.glb', x:  -20, z:  100, s: 1.1, ry: Math.PI/2 },
-        { file: 'building-type-j.glb', x:   20, z:  100, s: 1.2, ry: Math.PI },
-        { file: 'building-type-k.glb', x:   60, z:  100, s: 1.3, ry: 0 },
-        { file: 'building-type-l.glb', x:  100, z:  100, s: 1.1, ry: Math.PI/2 },
-        { file: 'building-type-m.glb', x: -100, z:  -60, s: 1.2, ry: Math.PI/2 },
-        { file: 'building-type-n.glb', x: -100, z:  -20, s: 1.3, ry: 0 },
-        { file: 'building-type-o.glb', x: -100, z:   20, s: 1.1, ry: Math.PI },
-        { file: 'building-type-p.glb', x: -100, z:   60, s: 1.2, ry: Math.PI/2 },
-        { file: 'building-type-q.glb', x:  100, z:  -60, s: 1.2, ry: 0 },
-        { file: 'building-type-r.glb', x:  100, z:  -20, s: 1.3, ry: Math.PI/2 },
-        { file: 'building-type-s.glb', x:  100, z:   20, s: 1.1, ry: 0 },
-        { file: 'building-type-u.glb', x:  100, z:   60, s: 1.2, ry: Math.PI },
-        { file: 'low-detail-building-a.glb',      x: -100, z: -100, s: 1.0, ry: 0 },
-        { file: 'low-detail-building-b.glb',      x:    0, z: -100, s: 1.0, ry: 0 },
-        { file: 'low-detail-building-c.glb',      x:  100, z: -100, s: 1.0, ry: 0 },
-        { file: 'low-detail-building-d.glb',      x: -100, z:    0, s: 1.0, ry: Math.PI/2 },
-        { file: 'low-detail-building-e.glb',      x:  100, z:    0, s: 1.0, ry: Math.PI/2 },
-        { file: 'low-detail-building-f.glb',      x: -100, z:  100, s: 1.0, ry: Math.PI },
-        { file: 'low-detail-building-wide-a.glb', x:    0, z:  100, s: 1.0, ry: Math.PI },
-        { file: 'low-detail-building-wide-b.glb', x:  100, z:  100, s: 1.0, ry: Math.PI },
+        { file: 'building-type-a.glb', x: -100, z: -100, s: 3.0,  ry: 0 },
+        { file: 'building-type-b.glb', x:  -60, z: -100, s: 3.25, ry: Math.PI/2 },
+        { file: 'building-type-c.glb', x:  -20, z: -100, s: 2.75, ry: 0 },
+        { file: 'building-type-d.glb', x:   20, z: -100, s: 3.0,  ry: Math.PI },
+        { file: 'building-type-e.glb', x:   60, z: -100, s: 3.25, ry: Math.PI/2 },
+        { file: 'building-type-f.glb', x:  100, z: -100, s: 2.75, ry: 0 },
+        { file: 'building-type-g.glb', x: -100, z:  100, s: 3.0,  ry: Math.PI },
+        { file: 'building-type-h.glb', x:  -60, z:  100, s: 3.25, ry: 0 },
+        { file: 'building-type-i.glb', x:  -20, z:  100, s: 2.75, ry: Math.PI/2 },
+        { file: 'building-type-j.glb', x:   20, z:  100, s: 3.0,  ry: Math.PI },
+        { file: 'building-type-k.glb', x:   60, z:  100, s: 3.25, ry: 0 },
+        { file: 'building-type-l.glb', x:  100, z:  100, s: 2.75, ry: Math.PI/2 },
+        { file: 'building-type-m.glb', x: -100, z:  -60, s: 3.0,  ry: Math.PI/2 },
+        { file: 'building-type-n.glb', x: -100, z:  -20, s: 3.25, ry: 0 },
+        { file: 'building-type-o.glb', x: -100, z:   20, s: 2.75, ry: Math.PI },
+        { file: 'building-type-p.glb', x: -100, z:   60, s: 3.0,  ry: Math.PI/2 },
+        { file: 'building-type-q.glb', x:  100, z:  -60, s: 3.0,  ry: 0 },
+        { file: 'building-type-r.glb', x:  100, z:  -20, s: 3.25, ry: Math.PI/2 },
+        { file: 'building-type-s.glb', x:  100, z:   20, s: 2.75, ry: 0 },
+        { file: 'building-type-u.glb', x:  100, z:   60, s: 3.0,  ry: Math.PI },
+        { file: 'low-detail-building-a.glb',      x: -100, z: -100, s: 2.5, ry: 0 },
+        { file: 'low-detail-building-b.glb',      x:    0, z: -100, s: 2.5, ry: 0 },
+        { file: 'low-detail-building-c.glb',      x:  100, z: -100, s: 2.5, ry: 0 },
+        { file: 'low-detail-building-d.glb',      x: -100, z:    0, s: 2.5, ry: Math.PI/2 },
+        { file: 'low-detail-building-e.glb',      x:  100, z:    0, s: 2.5, ry: Math.PI/2 },
+        { file: 'low-detail-building-f.glb',      x: -100, z:  100, s: 2.5, ry: Math.PI },
+        { file: 'low-detail-building-wide-a.glb', x:    0, z:  100, s: 2.5, ry: Math.PI },
+        { file: 'low-detail-building-wide-b.glb', x:  100, z:  100, s: 2.5, ry: Math.PI },
       ].forEach(b => loadBuilding(b.file, b.x, b.z, b.s, b.ry, 5));
     }
 
@@ -491,7 +490,7 @@
       playerCar.add(wg);
     });
 
-    playerCar.position.set(0, 0.5, 0);
+    playerCar.position.set(10, 0.5, 10);
     scene.add(playerCar);
 
     // ════════════════════════════════════════
