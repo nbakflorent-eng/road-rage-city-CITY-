@@ -222,76 +222,60 @@
     }
 
     function createDowntown() {
-      // Grille intérieure {±20, ±60} × {±20, ±60} — aucune position sur route
+      // 16 gratte-ciels sur grille intérieure {±20,±60}×{±20,±60}
+      // Scales 8-9.5 pour remplir visuellement les îlots
       [
-        // z = -60
-        { f:'building-skyscraper-a.glb', x:-60, z:-60, s:5.5, ry:0,            hw:6, hd:6 },
-        { f:'building-skyscraper-b.glb', x:-20, z:-60, s:6.0, ry:Math.PI/2,    hw:6, hd:6 },
-        { f:'building-skyscraper-c.glb', x: 20, z:-60, s:5.8, ry:0,            hw:6, hd:6 },
-        { f:'building-skyscraper-d.glb', x: 60, z:-60, s:6.2, ry:Math.PI,      hw:6, hd:6 },
-        // z = -20
-        { f:'building-skyscraper-e.glb', x:-60, z:-20, s:5.5, ry:Math.PI/2,    hw:6, hd:6 },
-        { f:'building-a.glb',            x:-20, z:-20, s:5.0, ry:Math.PI,      hw:5, hd:5 },
-        { f:'building-b.glb',            x: 20, z:-20, s:5.0, ry:0,            hw:5, hd:5 },
-        { f:'building-skyscraper-a.glb', x: 60, z:-20, s:6.0, ry:-Math.PI/2,  hw:6, hd:6 },
-        // z = 20
-        { f:'building-skyscraper-b.glb', x:-60, z: 20, s:5.8, ry:0,            hw:6, hd:6 },
-        { f:'building-c.glb',            x:-20, z: 20, s:5.0, ry:Math.PI/2,    hw:5, hd:5 },
-        { f:'building-d.glb',            x: 20, z: 20, s:5.0, ry:Math.PI,      hw:5, hd:5 },
-        { f:'building-skyscraper-c.glb', x: 60, z: 20, s:6.0, ry:Math.PI,      hw:6, hd:6 },
-        // z = 60
-        { f:'building-skyscraper-d.glb', x:-60, z: 60, s:6.2, ry:0,            hw:6, hd:6 },
-        { f:'building-skyscraper-e.glb', x:-20, z: 60, s:5.5, ry:Math.PI/2,    hw:6, hd:6 },
-        { f:'building-skyscraper-a.glb', x: 20, z: 60, s:5.8, ry:Math.PI,      hw:6, hd:6 },
-        { f:'building-skyscraper-b.glb', x: 60, z: 60, s:6.0, ry:-Math.PI/2,  hw:6, hd:6 },
+        // z=-60
+        {f:'building-skyscraper-a.glb', x:-60, z:-60, s:8.5, ry:0,           hw:6, hd:6},
+        {f:'building-skyscraper-b.glb', x:-20, z:-60, s:9.0, ry:Math.PI/2,   hw:6, hd:6},
+        {f:'building-skyscraper-c.glb', x: 20, z:-60, s:8.5, ry:0,           hw:6, hd:6},
+        {f:'building-skyscraper-d.glb', x: 60, z:-60, s:9.5, ry:Math.PI,     hw:6, hd:6},
+        // z=-20
+        {f:'building-skyscraper-e.glb', x:-60, z:-20, s:8.0, ry:Math.PI/2,   hw:6, hd:6},
+        {f:'building-a.glb',            x:-20, z:-20, s:7.5, ry:Math.PI,     hw:5, hd:5},
+        {f:'building-b.glb',            x: 20, z:-20, s:7.5, ry:0,           hw:5, hd:5},
+        {f:'building-skyscraper-a.glb', x: 60, z:-20, s:9.0, ry:-Math.PI/2,  hw:6, hd:6},
+        // z=20
+        {f:'building-skyscraper-b.glb', x:-60, z: 20, s:9.0, ry:0,           hw:6, hd:6},
+        {f:'building-c.glb',            x:-20, z: 20, s:7.5, ry:Math.PI/2,   hw:5, hd:5},
+        {f:'building-d.glb',            x: 20, z: 20, s:7.5, ry:Math.PI,     hw:5, hd:5},
+        {f:'building-skyscraper-c.glb', x: 60, z: 20, s:8.5, ry:Math.PI,     hw:6, hd:6},
+        // z=60
+        {f:'building-skyscraper-d.glb', x:-60, z: 60, s:9.5, ry:0,           hw:6, hd:6},
+        {f:'building-skyscraper-e.glb', x:-20, z: 60, s:8.0, ry:Math.PI/2,   hw:6, hd:6},
+        {f:'building-skyscraper-a.glb', x: 20, z: 60, s:9.0, ry:Math.PI,     hw:6, hd:6},
+        {f:'building-skyscraper-b.glb', x: 60, z: 60, s:8.5, ry:-Math.PI/2,  hw:6, hd:6},
       ].forEach(b => loadBuilding(b.f, b.x, b.z, b.s, b.ry, b.hw, b.hd));
     }
 
     function createSuburbs() {
-      // Anneau extérieur : |x|=100 ou |z|=100, jamais x/z=0/±40/±80/±120
+      // Anneau extérieur : exactement 20 positions uniques
+      // |x|=100 ou |z|=100, jamais sur une route
       [
-        // === NORD (z=-100) — 6 îlots ===
-        { f:'building-type-a.glb',            x:-100, z:-100, s:3.0,  ry:0,           hw:4, hd:4 },
-        { f:'building-type-b.glb',            x: -60, z:-100, s:3.2,  ry:Math.PI/2,   hw:4, hd:4 },
-        { f:'building-type-c.glb',            x: -20, z:-100, s:2.8,  ry:0,           hw:4, hd:4 },
-        { f:'building-type-d.glb',            x:  20, z:-100, s:3.0,  ry:Math.PI,     hw:4, hd:4 },
-        { f:'building-type-e.glb',            x:  60, z:-100, s:3.2,  ry:Math.PI/2,   hw:4, hd:4 },
-        { f:'building-type-f.glb',            x: 100, z:-100, s:2.8,  ry:0,           hw:4, hd:4 },
-        // === SUD (z=100) — 6 îlots ===
-        { f:'building-type-g.glb',            x:-100, z: 100, s:3.0,  ry:Math.PI,     hw:4, hd:4 },
-        { f:'building-type-h.glb',            x: -60, z: 100, s:3.2,  ry:0,           hw:4, hd:4 },
-        { f:'building-type-i.glb',            x: -20, z: 100, s:2.8,  ry:Math.PI/2,   hw:4, hd:4 },
-        { f:'building-type-j.glb',            x:  20, z: 100, s:3.0,  ry:Math.PI,     hw:4, hd:4 },
-        { f:'building-type-k.glb',            x:  60, z: 100, s:3.2,  ry:0,           hw:4, hd:4 },
-        { f:'building-type-l.glb',            x: 100, z: 100, s:2.8,  ry:Math.PI/2,   hw:4, hd:4 },
-        // === OUEST (x=-100) — 4 îlots ===
-        { f:'building-type-m.glb',            x:-100, z: -60, s:2.8,  ry:Math.PI/2,   hw:4, hd:4 },
-        { f:'building-type-n.glb',            x:-100, z: -20, s:3.0,  ry:0,           hw:4, hd:4 },
-        { f:'building-type-o.glb',            x:-100, z:  20, s:2.8,  ry:Math.PI,     hw:4, hd:4 },
-        { f:'building-type-p.glb',            x:-100, z:  60, s:3.0,  ry:Math.PI/2,   hw:4, hd:4 },
-        // === EST (x=100) — 4 îlots ===
-        { f:'building-type-q.glb',            x: 100, z: -60, s:2.8,  ry:-Math.PI/2,  hw:4, hd:4 },
-        { f:'building-type-r.glb',            x: 100, z: -20, s:3.0,  ry:0,           hw:4, hd:4 },
-        { f:'building-type-s.glb',            x: 100, z:  20, s:2.8,  ry:Math.PI,     hw:4, hd:4 },
-        { f:'building-type-u.glb',            x: 100, z:  60, s:3.0,  ry:-Math.PI/2,  hw:4, hd:4 },
-        // === LOW-DETAIL — coins et façades larges ===
-        { f:'low-detail-building-a.glb',      x:-100, z:-100, s:2.8,  ry:0,           hw:5, hd:5 },
-        { f:'low-detail-building-b.glb',      x: 100, z:-100, s:2.8,  ry:0,           hw:5, hd:5 },
-        { f:'low-detail-building-c.glb',      x:-100, z: 100, s:2.8,  ry:Math.PI,     hw:5, hd:5 },
-        { f:'low-detail-building-d.glb',      x: 100, z: 100, s:2.8,  ry:Math.PI,     hw:5, hd:5 },
-        { f:'low-detail-building-e.glb',      x: -60, z:-100, s:2.5,  ry:0,           hw:4, hd:3 },
-        { f:'low-detail-building-f.glb',      x:  60, z:-100, s:2.5,  ry:0,           hw:4, hd:3 },
-        { f:'low-detail-building-wide-a.glb', x: -20, z:-100, s:2.5,  ry:0,           hw:5, hd:3 },
-        { f:'low-detail-building-wide-b.glb', x:  20, z:-100, s:2.5,  ry:0,           hw:5, hd:3 },
-        // === TRANSITION — îlots intermédiaires entre downtown et périphérie ===
-        { f:'building-e.glb',                 x: -60, z:-100, s:3.0,  ry:Math.PI/2,   hw:3, hd:3 },
-        { f:'building-a.glb',                 x:  60, z:-100, s:3.0,  ry:Math.PI/2,   hw:3, hd:3 },
-        { f:'building-b.glb',                 x: -60, z: 100, s:3.0,  ry:-Math.PI/2,  hw:3, hd:3 },
-        { f:'building-c.glb',                 x:  60, z: 100, s:3.0,  ry:-Math.PI/2,  hw:3, hd:3 },
-        { f:'building-d.glb',                 x:-100, z: -60, s:3.0,  ry:0,           hw:3, hd:3 },
-        { f:'building-e.glb',                 x:-100, z:  60, s:3.0,  ry:Math.PI,     hw:3, hd:3 },
-        { f:'building-a.glb',                 x: 100, z: -60, s:3.0,  ry:0,           hw:3, hd:3 },
-        { f:'building-b.glb',                 x: 100, z:  60, s:3.0,  ry:Math.PI,     hw:3, hd:3 },
+        // === NORD z=-100 (6 îlots distincts) ===
+        {f:'building-skyscraper-c.glb', x:-100, z:-100, s:6.5, ry:0,           hw:5, hd:5},
+        {f:'building-type-a.glb',       x: -60, z:-100, s:5.5, ry:Math.PI/2,   hw:4, hd:4},
+        {f:'building-type-b.glb',       x: -20, z:-100, s:5.0, ry:0,           hw:4, hd:4},
+        {f:'building-type-c.glb',       x:  20, z:-100, s:5.0, ry:Math.PI,     hw:4, hd:4},
+        {f:'building-type-d.glb',       x:  60, z:-100, s:5.5, ry:-Math.PI/2,  hw:4, hd:4},
+        {f:'building-skyscraper-d.glb', x: 100, z:-100, s:6.5, ry:Math.PI,     hw:5, hd:5},
+        // === SUD z=100 (6 îlots distincts) ===
+        {f:'building-skyscraper-e.glb', x:-100, z: 100, s:6.5, ry:0,           hw:5, hd:5},
+        {f:'building-type-e.glb',       x: -60, z: 100, s:5.5, ry:-Math.PI/2,  hw:4, hd:4},
+        {f:'building-type-f.glb',       x: -20, z: 100, s:5.0, ry:0,           hw:4, hd:4},
+        {f:'building-type-g.glb',       x:  20, z: 100, s:5.0, ry:Math.PI,     hw:4, hd:4},
+        {f:'building-type-h.glb',       x:  60, z: 100, s:5.5, ry:Math.PI/2,   hw:4, hd:4},
+        {f:'building-skyscraper-a.glb', x: 100, z: 100, s:6.5, ry:Math.PI,     hw:5, hd:5},
+        // === OUEST x=-100 (4 îlots intérieurs) ===
+        {f:'building-type-i.glb',       x:-100, z: -60, s:5.5, ry:Math.PI/2,   hw:4, hd:4},
+        {f:'building-type-j.glb',       x:-100, z: -20, s:5.0, ry:0,           hw:4, hd:4},
+        {f:'building-type-k.glb',       x:-100, z:  20, s:5.0, ry:Math.PI,     hw:4, hd:4},
+        {f:'building-type-l.glb',       x:-100, z:  60, s:5.5, ry:Math.PI/2,   hw:4, hd:4},
+        // === EST x=100 (4 îlots intérieurs) ===
+        {f:'building-type-m.glb',       x: 100, z: -60, s:5.5, ry:-Math.PI/2,  hw:4, hd:4},
+        {f:'building-type-n.glb',       x: 100, z: -20, s:5.0, ry:0,           hw:4, hd:4},
+        {f:'building-type-o.glb',       x: 100, z:  20, s:5.0, ry:Math.PI,     hw:4, hd:4},
+        {f:'building-type-p.glb',       x: 100, z:  60, s:5.5, ry:-Math.PI/2,  hw:4, hd:4},
       ].forEach(b => loadBuilding(b.f, b.x, b.z, b.s, b.ry, b.hw, b.hd));
     }
 
