@@ -65,11 +65,7 @@
 
   <!-- Three.js r128 CDN + Loaders -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/FBXLoader.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/fflate.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/SkeletonUtils.js"></script>
 
 
   <script>
@@ -100,11 +96,16 @@
     renderer.setClearColor(0x87ceeb);
     document.body.appendChild(renderer.domElement);
 
-    const _mapRenderer = new THREE.WebGLRenderer({antialias:false});
-    _mapRenderer.setSize(660,660);
-    _mapRenderer.setClearColor(0x1a1a2e, 1);
-    _mapRenderer.autoClear = true;
-    _mapRenderer.autoClearColor = true;
+    let _mapRenderer = null;
+    function _initMapRenderer() {
+      if (_mapRenderer) return;
+      _mapRenderer = new THREE.WebGLRenderer({antialias:false});
+      _mapRenderer.setSize(660,660);
+      _mapRenderer.setClearColor(0x1a1a2e, 1);
+      _mapRenderer.autoClear = true;
+      _mapRenderer.autoClearColor = true;
+      _mapDiv.insertBefore(_mapRenderer.domElement, _mapDiv.firstChild);
+    }
     const _mapCam = new THREE.OrthographicCamera(-80,80,80,-80,0.1,2000);
     _mapCam.up.set(0,0,-1);
     _mapCam.position.set(0,400,0);
@@ -119,7 +120,6 @@
     const _mapTriCanvas = document.createElement('canvas');
     _mapTriCanvas.width=660; _mapTriCanvas.height=660;
     _mapTriCanvas.style.cssText='position:absolute;top:0;left:0;pointer-events:none;z-index:1000002';
-    _mapDiv.appendChild(_mapRenderer.domElement);
     _mapDiv.appendChild(_mapLabel);
     _mapDiv.appendChild(_mapTriCanvas);
     document.body.appendChild(_mapDiv);
@@ -155,13 +155,15 @@
 
     // ── GLTFLoader ──
     function _loadGLB(key, cb) {
-      const manager = new THREE.LoadingManager();
-      manager.setURLModifier(url => { const f = url.split('/').pop(); if (/^[0-9a-f-]{36}$/.test(f)) return url; return BASE + encodeURIComponent(f); });
-      const loader = new THREE.GLTFLoader(manager);
-      loader.load(BASE + key, g => {
-        if (g && g.scene) g.scene.traverse(c => { if (c.isMesh) { c.material.side = THREE.FrontSide; c.material.needsUpdate = true; } });
-        cb(g ? g.scene : null);
-      }, null, () => { console.warn('GLB manquant:', key); cb(null); });
+      try {
+        const manager = new THREE.LoadingManager();
+        manager.setURLModifier(url => { const f = url.split('/').pop(); if (/^[0-9a-f-]{36}$/.test(f)) return url; return BASE + encodeURIComponent(f); });
+        const loader = new THREE.GLTFLoader(manager);
+        loader.load(BASE + key, g => {
+          if (g && g.scene) g.scene.traverse(c => { if (c.isMesh) { c.material.side = THREE.FrontSide; c.material.needsUpdate = true; } });
+          cb(g ? g.scene : null);
+        }, null, () => { console.warn('GLB manquant:', key); cb(null); });
+      } catch(e) { console.warn('GLB loader error:', key, e); cb(null); }
     }
 
     // ════════════════════════════════════════
@@ -212,14 +214,26 @@
     // ════════════════════════════════════════
     //  BÂTIMENTS
     // ════════════════════════════════════════
+    const _bMats = [0x889999,0x998888,0x889988,0x888899,0x999988,0x998899,0x778899,0x997788]
+      .map(c => new THREE.MeshLambertMaterial({color:c}));
+    let _bMatIdx = 0;
     function loadBuilding(filename, x, z, scale, rotY, hw, hd) {
       _loadGLB(filename, g => {
-        if (!g) return;
-        g.scale.setScalar(scale);
-        g.rotation.y = rotY;
-        scene.add(g);
-        const box = new THREE.Box3().setFromObject(g);
-        g.position.set(x, -box.min.y, z);
+        if (g) {
+          g.scale.setScalar(scale);
+          g.rotation.y = rotY;
+          scene.add(g);
+          const box = new THREE.Box3().setFromObject(g);
+          g.position.set(x, -box.min.y, z);
+        } else {
+          const bh = scale * 1.4;
+          const fall = new THREE.Mesh(
+            new THREE.BoxGeometry((hw||4)*1.6, bh, (hd||4)*1.6),
+            _bMats[_bMatIdx++ % _bMats.length]
+          );
+          fall.position.set(x, bh / 2, z);
+          scene.add(fall);
+        }
         buildingBounds.push({ x, z, hw: hw || 4, hd: hd || 4 });
       });
     }
@@ -284,8 +298,8 @@
 
     buildingBounds = [];
     createRoadGrid();
-    createDowntown();
-    createSuburbs();
+    try { createDowntown(); } catch(e) { console.error('createDowntown:', e); }
+    try { createSuburbs(); } catch(e) { console.error('createSuburbs:', e); }
 
 
     // ════════════════════════════════════════
@@ -606,7 +620,8 @@
       update(dt);
       renderer.render(scene, camera);
       drawMinimap();
-      if(typeof _mapDiv!=='undefined' && _mapDiv.style.display==='block'){
+      if(_mapDiv.style.display==='block'){
+        _initMapRenderer();
         _mapCam.position.set(playerCar.position.x, 80, playerCar.position.z);
         _mapCam.lookAt(playerCar.position.x, 0, playerCar.position.z);
         const _bg = scene.background; scene.background = new THREE.Color(0x1a1a2e);
