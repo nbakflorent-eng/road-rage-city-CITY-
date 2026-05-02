@@ -50,6 +50,7 @@
     });
   </script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
   <script>
   (function() {
     if (typeof THREE === 'undefined') {
@@ -258,6 +259,111 @@
       mmCtx.restore();
       mmCtx.restore();
     }
+
+    // BUILDINGS
+    var buildingBounds = [];
+    var _gloader = null;
+    function _getLoader() {
+      if (_gloader) return _gloader;
+      try { _gloader = new THREE.GLTFLoader(); } catch (e) { return null; }
+      return _gloader;
+    }
+    function loadBuilding(url, bx, bz, sx, sy, sz, rotY) {
+      var loader = _getLoader();
+      if (!loader) return;
+      loader.load(url, function (gltf) {
+        var g = gltf.scene;
+        g.scale.set(sx, sy, sz);
+        g.rotation.y = rotY;
+        scene.add(g);
+        var box = new THREE.Box3().setFromObject(g);
+        g.position.set(bx, -box.min.y + 0.05, bz);
+        buildingBounds.push({
+          x: bx, z: bz,
+          hw: (box.max.x - box.min.x) / 2 + 0.5,
+          hd: (box.max.z - box.min.z) / 2 + 0.5
+        });
+      }, undefined, function () { /* silent fail */ });
+    }
+
+    function createDowntown() {
+      const BASE = 'https://nbakflorent-eng.github.io/road-rage-city-CITY-/';
+      const skyscrapers = ['building-skyscraper-a.glb','building-skyscraper-b.glb','building-skyscraper-c.glb','building-skyscraper-d.glb','building-skyscraper-e.glb'];
+      const centers = [-60,-20,20,60];
+      const scaleYs = [13,15,11,14,12];
+      let i = 0;
+      for (const cx of centers) {
+        for (const cz of centers) {
+          const dist = Math.sqrt(cx*cx + cz*cz);
+          if (dist > 90) continue;
+          const ry = Math.abs(cx) > Math.abs(cz) ? (cx>0 ? -Math.PI/2 : Math.PI/2) : (cz>0 ? Math.PI : 0);
+          const offsets = [[-8,0],[0,0],[8,0]];
+          for (const [ox,oz] of offsets) {
+            const bx = cx+ox, bz = cz+oz;
+            const onRoad = [-120,-80,-40,0,40,80,120].some(r => Math.abs(bx-r)<8 || Math.abs(bz-r)<8);
+            if (onRoad) continue;
+            loadBuilding(BASE+skyscrapers[i%5], bx, bz, 5, scaleYs[i%5], 5, ry);
+            i++;
+          }
+          loadBuilding(BASE+'tree_oak.glb', cx-12, cz-12, 4, 4, 4, 0);
+          loadBuilding(BASE+'lightPostLarge.glb', cx-18, cz-18, 3, 3, 3, 0);
+        }
+      }
+    }
+
+    function createMidtown() {
+      const BASE = 'https://nbakflorent-eng.github.io/road-rage-city-CITY-/';
+      const buildings = ['building-a.glb','building-b.glb','building-c.glb','building-d.glb','building-e.glb','building-f.glb','building-g.glb','building-h.glb'];
+      const centers = [-100,-60,-20,20,60,100];
+      const scaleYs = [7,9,6,8];
+      let i = 0;
+      for (const cx of centers) {
+        for (const cz of centers) {
+          const dist = Math.sqrt(cx*cx + cz*cz);
+          if (dist <= 85 || dist > 130) continue;
+          const ry = Math.abs(cx) > Math.abs(cz) ? (cx>0 ? -Math.PI/2 : Math.PI/2) : (cz>0 ? Math.PI : 0);
+          const offsets = [[-6,3],[6,-3]];
+          for (const [ox,oz] of offsets) {
+            const bx = cx+ox, bz = cz+oz;
+            const onRoad = [-120,-80,-40,0,40,80,120].some(r => Math.abs(bx-r)<8 || Math.abs(bz-r)<8);
+            if (onRoad) continue;
+            loadBuilding(BASE+buildings[i%8], bx, bz, 4, scaleYs[i%4], 4, ry);
+            i++;
+          }
+          loadBuilding(BASE+'tree-large.glb', cx, cz+10, 3, 3, 3, 0);
+        }
+      }
+    }
+
+    function createSuburbs() {
+      const BASE = 'https://nbakflorent-eng.github.io/road-rage-city-CITY-/';
+      const houses = ['building-type-a.glb','building-type-b.glb','building-type-c.glb','building-type-d.glb','building-type-e.glb'];
+      const centers = [-100,-60,-20,20,60,100];
+      let i = 0;
+      for (const cx of centers) {
+        for (const cz of centers) {
+          if (Math.abs(cx) <= 80 && Math.abs(cz) <= 80) continue;
+          const ry = Math.abs(cx) > Math.abs(cz) ? (cx>0 ? -Math.PI/2 : Math.PI/2) : (cz>0 ? Math.PI : 0);
+          const offsets = [[-6,-6],[6,-6],[-6,6],[6,6]];
+          for (const [ox,oz] of offsets) {
+            const bx = cx+ox, bz = cz+oz;
+            const onRoad = [-120,-80,-40,0,40,80,120].some(r => Math.abs(bx-r)<8 || Math.abs(bz-r)<8);
+            if (onRoad) continue;
+            loadBuilding(BASE+houses[i%5], bx, bz, 3.5, 3.5, 3.5, ry);
+            i++;
+          }
+          loadBuilding(BASE+'tree_oak.glb', cx, cz, 3, 3, 3, 0);
+        }
+      }
+    }
+
+    function init() {
+      buildingBounds = [];
+      try { createDowntown(); } catch (e) { console.error('downtown:', e); }
+      try { createMidtown(); } catch (e) { console.error('midtown:', e); }
+      try { createSuburbs(); } catch (e) { console.error('suburbs:', e); }
+    }
+    init();
 
     // LOOP
     var clock = new THREE.Clock();
