@@ -295,32 +295,44 @@
       return _gloader;
     }
     function loadBuilding(url, bx, bz, sx, sy, sz, rotY) {
+      // Fallback box visible immediatement (couleur selon type d'asset)
+      var fc = url.indexOf('skyscraper') >= 0 ? 0x8aa3b8 :
+               url.indexOf('building-type') >= 0 ? 0xd2b48c :
+               url.indexOf('lightPost') >= 0 ? 0x222222 :
+               url.indexOf('tree') >= 0 ? 0x2d5a2d :
+               url.indexOf('traffic') >= 0 ? 0x333333 :
+               url.indexOf('building-') >= 0 ? 0xb8b0a8 :
+               0xaaaaaa;
+      var fbW = Math.max(sx, 1) * 0.85;
+      var fbH = Math.max(sy, 1) * 1.0;
+      var fbD = Math.max(sz, 1) * 0.85;
+      var fb = new THREE.Mesh(
+        new THREE.BoxGeometry(fbW, fbH, fbD),
+        new THREE.MeshLambertMaterial({ color: fc })
+      );
+      fb.position.set(bx, fbH / 2, bz);
+      fb.rotation.y = rotY;
+      scene.add(fb);
+      buildingBounds.push({
+        x: bx, z: bz,
+        hw: fbW / 2 + 0.5,
+        hd: fbD / 2 + 0.5
+      });
+
       var loader = _getLoader();
       if (!loader) return;
       loader.load(url, function (gltf) {
         var g = gltf.scene;
         g.scale.set(sx, sy, sz);
         g.rotation.y = rotY;
-        g.traverse(function (c) {
-          if (c.isMesh && c.material) {
-            if (Array.isArray(c.material)) {
-              c.material.forEach(function (m) { if ('envMapIntensity' in m) m.envMapIntensity = 0; });
-            } else if ('envMapIntensity' in c.material) {
-              c.material.envMapIntensity = 0;
-            }
-            c.castShadow = false;
-            c.receiveShadow = false;
-          }
-        });
         scene.add(g);
         var box = new THREE.Box3().setFromObject(g);
         g.position.set(bx, -box.min.y + 0.05, bz);
-        buildingBounds.push({
-          x: bx, z: bz,
-          hw: (box.max.x - box.min.x) / 2 + 0.5,
-          hd: (box.max.z - box.min.z) / 2 + 0.5
-        });
-      }, undefined, function () { /* silent fail */ });
+        // GLB charge OK : retire le fallback
+        scene.remove(fb);
+      }, undefined, function () {
+        // GLB echec : on garde le fallback
+      });
     }
 
     function isSafe(x, z) {
