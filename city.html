@@ -322,36 +322,40 @@
       var loader = _getLoader();
       if (!loader) return;
       loader.load(url, function (gltf) {
-        var g = gltf.scene;
-        // Convertit chaque MeshStandardMaterial en MeshLambertMaterial
-        // (les GLB Kenney exportes par Unity ont metalness=1 par defaut -> noirs sans envMap)
-        g.traverse(function (c) {
-          if (c.isMesh && c.material) {
-            var convertOne = function (mat) {
-              if (!mat) return mat;
-              var lam = new THREE.MeshLambertMaterial({
-                color: mat.color ? mat.color.clone() : new THREE.Color(0xffffff),
-                map: mat.map || null,
-                transparent: false,
-                opacity: 1,
-                side: THREE.DoubleSide
-              });
-              return lam;
-            };
-            if (Array.isArray(c.material)) {
-              c.material = c.material.map(convertOne);
-            } else {
-              c.material = convertOne(c.material);
+        try {
+          var g = gltf.scene;
+          // Garde le materiau PBR original (preserve KHR_texture_transform)
+          // mais force des parametres robustes au cas ou
+          g.traverse(function (c) {
+            if (c.isMesh && c.material) {
+              var mats = Array.isArray(c.material) ? c.material : [c.material];
+              for (var i = 0; i < mats.length; i++) {
+                var m = mats[i];
+                if (m) {
+                  if ('metalness' in m) m.metalness = 0;
+                  if ('roughness' in m) m.roughness = 1;
+                  if ('envMapIntensity' in m) m.envMapIntensity = 1;
+                  m.transparent = false;
+                  m.opacity = 1;
+                  m.side = THREE.FrontSide;
+                  m.needsUpdate = true;
+                }
+              }
             }
-          }
-        });
-        g.scale.set(sx, sy, sz);
-        g.rotation.y = rotY;
-        scene.add(g);
-        var box = new THREE.Box3().setFromObject(g);
-        g.position.set(bx, -box.min.y + 0.05, bz);
-        scene.remove(fb);
-      }, undefined, function () { /* GLB fail: garde le fallback */ });
+          });
+          g.scale.set(sx, sy, sz);
+          g.rotation.y = rotY;
+          scene.add(g);
+          var box = new THREE.Box3().setFromObject(g);
+          g.position.set(bx, -box.min.y + 0.05, bz);
+          scene.remove(fb);
+        } catch (e) {
+          console.error('GLB onLoad error for', url, e);
+          // Le fallback reste visible si quelque chose plante
+        }
+      }, undefined, function (err) {
+        console.warn('GLB load fail:', url);
+      });
     }
 
     function isSafe(x, z) {
