@@ -324,25 +324,10 @@
       loader.load(url, function (gltf) {
         try {
           var g = gltf.scene;
-          // Garde le materiau PBR original (preserve KHR_texture_transform)
-          // mais force des parametres robustes au cas ou
-          g.traverse(function (c) {
-            if (c.isMesh && c.material) {
-              var mats = Array.isArray(c.material) ? c.material : [c.material];
-              for (var i = 0; i < mats.length; i++) {
-                var m = mats[i];
-                if (m) {
-                  if ('metalness' in m) m.metalness = 0;
-                  if ('roughness' in m) m.roughness = 1;
-                  if ('envMapIntensity' in m) m.envMapIntensity = 1;
-                  m.transparent = false;
-                  m.opacity = 1;
-                  m.side = THREE.FrontSide;
-                  m.needsUpdate = true;
-                }
-              }
-            }
-          });
+          // Ne TOUCHE PAS aux materiaux : le GLTFLoader applique correctement
+          // le PBR + texture + KHR_texture_transform + doubleSided des GLB Kenney.
+          // Les modifications precedentes cassaient le rendu (FrontSide cachait les
+          // faces internes des batiments aux normales inversees).
           g.scale.set(sx, sy, sz);
           g.rotation.y = rotY;
           scene.add(g);
@@ -351,7 +336,6 @@
           scene.remove(fb);
         } catch (e) {
           console.error('GLB onLoad error for', url, e);
-          // Le fallback reste visible si quelque chose plante
         }
       }, undefined, function (err) {
         console.warn('GLB load fail:', url);
