@@ -295,17 +295,17 @@
       return _gloader;
     }
     function loadBuilding(url, bx, bz, sx, sy, sz, rotY) {
-      // Fallback box visible immediatement (couleur selon type d'asset)
-      var fc = url.indexOf('skyscraper') >= 0 ? 0x8aa3b8 :
-               url.indexOf('building-type') >= 0 ? 0xd2b48c :
+      // Fallback box couleurs vives selon type
+      var fc = url.indexOf('skyscraper') >= 0 ? 0x4a90e2 :
+               url.indexOf('building-type') >= 0 ? 0xe28b4a :
                url.indexOf('lightPost') >= 0 ? 0x222222 :
                url.indexOf('tree') >= 0 ? 0x2d5a2d :
                url.indexOf('traffic') >= 0 ? 0x333333 :
-               url.indexOf('building-') >= 0 ? 0xb8b0a8 :
+               url.indexOf('building-') >= 0 ? 0xc44a4a :
                0xaaaaaa;
-      var fbW = Math.max(sx, 1) * 0.85;
+      var fbW = Math.max(sx, 1) * 0.9;
       var fbH = Math.max(sy, 1) * 1.0;
-      var fbD = Math.max(sz, 1) * 0.85;
+      var fbD = Math.max(sz, 1) * 0.9;
       var fb = new THREE.Mesh(
         new THREE.BoxGeometry(fbW, fbH, fbD),
         new THREE.MeshLambertMaterial({ color: fc })
@@ -323,16 +323,35 @@
       if (!loader) return;
       loader.load(url, function (gltf) {
         var g = gltf.scene;
+        // Convertit chaque MeshStandardMaterial en MeshLambertMaterial
+        // (les GLB Kenney exportes par Unity ont metalness=1 par defaut -> noirs sans envMap)
+        g.traverse(function (c) {
+          if (c.isMesh && c.material) {
+            var convertOne = function (mat) {
+              if (!mat) return mat;
+              var lam = new THREE.MeshLambertMaterial({
+                color: mat.color ? mat.color.clone() : new THREE.Color(0xffffff),
+                map: mat.map || null,
+                transparent: false,
+                opacity: 1,
+                side: THREE.DoubleSide
+              });
+              return lam;
+            };
+            if (Array.isArray(c.material)) {
+              c.material = c.material.map(convertOne);
+            } else {
+              c.material = convertOne(c.material);
+            }
+          }
+        });
         g.scale.set(sx, sy, sz);
         g.rotation.y = rotY;
         scene.add(g);
         var box = new THREE.Box3().setFromObject(g);
         g.position.set(bx, -box.min.y + 0.05, bz);
-        // GLB charge OK : retire le fallback
         scene.remove(fb);
-      }, undefined, function () {
-        // GLB echec : on garde le fallback
-      });
+      }, undefined, function () { /* GLB fail: garde le fallback */ });
     }
 
     function isSafe(x, z) {
