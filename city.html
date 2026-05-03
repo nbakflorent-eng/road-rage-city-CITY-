@@ -76,10 +76,15 @@
     document.body.appendChild(renderer.domElement);
 
     // LIGHTS
-    scene.add(new THREE.AmbientLight(0xffffff, 1.8));
-    var sun = new THREE.DirectionalLight(0xffffff, 0.6);
-    sun.position.set(50, 100, 50);
+    var ambient = new THREE.AmbientLight(0xffffff, 3.0);
+    scene.add(ambient);
+    var sun = new THREE.DirectionalLight(0xffffff, 2.0);
+    sun.position.set(200, 400, 200);
+    sun.castShadow = false;
     scene.add(sun);
+    var fill = new THREE.DirectionalLight(0xffffff, 1.0);
+    fill.position.set(-200, 200, -200);
+    scene.add(fill);
 
     // GROUND
     var ground = new THREE.Mesh(
@@ -294,7 +299,17 @@
         var g = gltf.scene;
         g.scale.set(sx, sy, sz);
         g.rotation.y = rotY;
-        g.traverse(function (c) { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+        g.traverse(function (c) {
+          if (c.isMesh && c.material) {
+            if (Array.isArray(c.material)) {
+              c.material.forEach(function (m) { if ('envMapIntensity' in m) m.envMapIntensity = 0; });
+            } else if ('envMapIntensity' in c.material) {
+              c.material.envMapIntensity = 0;
+            }
+            c.castShadow = false;
+            c.receiveShadow = false;
+          }
+        });
         scene.add(g);
         var box = new THREE.Box3().setFromObject(g);
         g.position.set(bx, -box.min.y + 0.05, bz);
@@ -307,35 +322,37 @@
     }
 
     function isSafe(x, z) {
-      return ![-120,-80,-40,0,40,80,120].some(function (r) { return Math.abs(x - r) < 7 || Math.abs(z - r) < 7; });
+      return ![-120,-80,-40,0,40,80,120].some(function (r) { return Math.abs(x - r) < 8 || Math.abs(z - r) < 8; });
     }
 
     function createDowntown() {
       const BASE = 'https://nbakflorent-eng.github.io/road-rage-city-CITY-/';
+      const skyB = ['building-skyscraper-a.glb','building-skyscraper-b.glb','building-skyscraper-c.glb','building-skyscraper-d.glb','building-skyscraper-e.glb'];
+      const islandCenters = [-100,-60,-20,20,60,100];
+      let si = 0;
+      for (const cx of islandCenters) {
+        for (const cz of islandCenters) {
+          if (Math.abs(cx) > 60 || Math.abs(cz) > 60) continue;
+          const ry = Math.abs(cx) >= Math.abs(cz) ? (cx>0 ? -Math.PI/2 : Math.PI/2) : (cz>0 ? Math.PI : 0);
+          if (isSafe(cx, cz)) {
+            loadBuilding(BASE + skyB[si%5], cx, cz, 1, 1, 1, ry);
+            si++;
+          }
+          const treePos = [[cx-8, cz-8],[cx+8, cz+8]];
+          for (const [tx, tz] of treePos) {
+            if (isSafe(tx, tz)) loadBuilding(BASE + 'tree_oak.glb', tx, tz, 1, 1, 1, 0);
+          }
+        }
+      }
       // Lampadaires aux 4 coins de chaque intersection
       const roadAxes = [-120,-80,-40,0,40,80,120];
       for (const rx of roadAxes) {
         for (const rz of roadAxes) {
           const isCenter = Math.abs(rx)<=40 && Math.abs(rz)<=40;
           const lamp = isCenter ? 'lightPostLarge.glb' : 'lightPostModern.glb';
-          const sy = isCenter ? 8 : 6;
           const corners = [[rx+6,rz+6],[rx-6,rz+6],[rx+6,rz-6],[rx-6,rz-6]];
           for (const [lx,lz] of corners) {
-            loadBuilding(BASE+lamp, lx, lz, 1, sy, 1, 0);
-          }
-        }
-      }
-      // Arbres aux coins des îlots
-      const treeAssets = ['tree_oak.glb','tree-large.glb','tree-park-large.glb','tree_fat.glb','tree_tall.glb'];
-      const islandCenters = [-100,-60,-20,20,60,100];
-      let ti = 0;
-      for (const cx of islandCenters) {
-        for (const cz of islandCenters) {
-          const corners = [[cx-10,cz-10],[cx+10,cz-10],[cx-10,cz+10],[cx+10,cz+10]];
-          for (const [tx,tz] of corners) {
-            if (!isSafe(tx,tz)) continue;
-            loadBuilding(BASE+treeAssets[ti%5], tx, tz, 3, 3, 3, 0);
-            ti++;
+            loadBuilding(BASE+lamp, lx, lz, 1, 1, 1, 0);
           }
         }
       }
@@ -343,25 +360,19 @@
 
     function createMidtown() {
       const BASE = 'https://nbakflorent-eng.github.io/road-rage-city-CITY-/';
-      const skyB = ['building-skyscraper-a.glb','building-skyscraper-b.glb','building-skyscraper-c.glb','building-skyscraper-d.glb','building-skyscraper-e.glb'];
-      const skyY = [12,14,10,13,11];
       const midB = ['building-a.glb','building-b.glb','building-c.glb','building-d.glb','building-e.glb','building-f.glb','building-g.glb','building-h.glb','building-i.glb','building-j.glb','building-k.glb','building-l.glb','building-m.glb','building-n.glb','building-o.glb','building-p.glb','building-q.glb','building-r.glb','building-s.glb'];
-      const midY = [7,8,6,9];
       const centers = [-100,-60,-20,20,60,100];
-      let si=0, mi=0;
+      let mi = 0;
       for (const cx of centers) {
         for (const cz of centers) {
-          const ry = Math.abs(cx)>=Math.abs(cz) ? (cx>0?-Math.PI/2:Math.PI/2) : (cz>0?Math.PI:0);
-          const isCenter = Math.abs(cx)<=60 && Math.abs(cz)<=60;
-          const isMid = !isCenter && Math.abs(cx)<=100 && Math.abs(cz)<=100;
-          if (isCenter) {
-            if (isSafe(cx,cz)) { loadBuilding(BASE+skyB[si%5], cx, cz, 4, skyY[si%5], 4, ry); si++; }
-          } else if (isMid) {
-            const pts = [[cx-5,cz],[cx+5,cz]];
-            for (const [bx,bz] of pts) {
-              if (isSafe(bx,bz)) { loadBuilding(BASE+midB[mi%19], bx, bz, 3, midY[mi%4], 3, ry); mi++; }
-            }
+          const inMid = (Math.abs(cx) > 60 || Math.abs(cz) > 60) && Math.abs(cx) <= 100 && Math.abs(cz) <= 100;
+          if (!inMid) continue;
+          const ry = Math.abs(cx) >= Math.abs(cz) ? (cx>0 ? -Math.PI/2 : Math.PI/2) : (cz>0 ? Math.PI : 0);
+          const pts = [[cx-5, cz],[cx+5, cz]];
+          for (const [bx, bz] of pts) {
+            if (isSafe(bx, bz)) { loadBuilding(BASE + midB[mi%19], bx, bz, 1, 1, 1, ry); mi++; }
           }
+          if (isSafe(cx, cz+8)) loadBuilding(BASE + 'tree_oak.glb', cx, cz+8, 1, 1, 1, 0);
         }
       }
     }
@@ -370,14 +381,14 @@
       const BASE = 'https://nbakflorent-eng.github.io/road-rage-city-CITY-/';
       const houseB = ['building-type-a.glb','building-type-b.glb','building-type-c.glb','building-type-d.glb','building-type-e.glb','building-type-f.glb','building-type-g.glb','building-type-h.glb','building-type-i.glb','building-type-j.glb','building-type-k.glb','building-type-l.glb','building-type-m.glb','building-type-n.glb','building-type-o.glb','building-type-p.glb','building-type-q.glb','building-type-r.glb','building-type-s.glb'];
       const centers = [-100,-60,-20,20,60,100];
-      let hi=0;
+      let hi = 0;
       for (const cx of centers) {
         for (const cz of centers) {
-          if (Math.abs(cx)<=100 && Math.abs(cz)<=100) continue;
-          const ry = Math.abs(cx)>=Math.abs(cz) ? (cx>0?-Math.PI/2:Math.PI/2) : (cz>0?Math.PI:0);
-          const pts = [[cx,cz-6],[cx,cz+6]];
-          for (const [bx,bz] of pts) {
-            if (isSafe(bx,bz)) { loadBuilding(BASE+houseB[hi%19], bx, bz, 3, 3, 3, ry); hi++; }
+          if (Math.abs(cx) <= 100 && Math.abs(cz) <= 100) continue;
+          const ry = Math.abs(cx) >= Math.abs(cz) ? (cx>0 ? -Math.PI/2 : Math.PI/2) : (cz>0 ? Math.PI : 0);
+          const pts = [[cx, cz-5],[cx, cz+5]];
+          for (const [bx, bz] of pts) {
+            if (isSafe(bx, bz)) { loadBuilding(BASE + houseB[hi%19], bx, bz, 1, 1, 1, ry); hi++; }
           }
         }
       }
