@@ -76,15 +76,12 @@
     document.body.appendChild(renderer.domElement);
 
     // LIGHTS
-    var ambient = new THREE.AmbientLight(0xffffff, 3.0);
+    var ambient = new THREE.AmbientLight(0xffffff, 1.8);
     scene.add(ambient);
-    var sun = new THREE.DirectionalLight(0xffffff, 2.0);
-    sun.position.set(200, 400, 200);
+    var sun = new THREE.DirectionalLight(0xffffff, 0.8);
+    sun.position.set(50, 100, 50);
     sun.castShadow = false;
     scene.add(sun);
-    var fill = new THREE.DirectionalLight(0xffffff, 1.0);
-    fill.position.set(-200, 200, -200);
-    scene.add(fill);
 
     // GROUND
     var ground = new THREE.Mesh(
@@ -346,6 +343,28 @@
       return ![-120,-80,-40,0,40,80,120].some(function (r) { return Math.abs(x - r) < 8 || Math.abs(z - r) < 8; });
     }
 
+
+    function facingToRoad(x, z) {
+      if (Math.abs(x) >= Math.abs(z)) return x > 0 ? -Math.PI/2 : Math.PI/2;
+      return z > 0 ? Math.PI : 0;
+    }
+
+    function createMapBorder() {
+      var BASE = 'https://nbakflorent-eng.github.io/road-rage-city-CITY-/';
+      var low = ['low-detail-building-a.glb','low-detail-building-b.glb','low-detail-building-c.glb','low-detail-building-d.glb','low-detail-building-e.glb'];
+      var idx = 0;
+      for (var a = -180; a <= 180; a += 18) {
+        loadBuilding(BASE + low[idx % low.length], -150, a, 4, 4.5, 4, Math.PI/2); idx++;
+        loadBuilding(BASE + low[idx % low.length], -165, a, 4, 4.5, 4, Math.PI/2); idx++;
+        loadBuilding(BASE + low[idx % low.length], 150, a, 4, 4.5, 4, -Math.PI/2); idx++;
+        loadBuilding(BASE + low[idx % low.length], 165, a, 4, 4.5, 4, -Math.PI/2); idx++;
+        loadBuilding(BASE + low[idx % low.length], a, -150, 4, 4.5, 4, 0); idx++;
+        loadBuilding(BASE + low[idx % low.length], a, -165, 4, 4.5, 4, 0); idx++;
+        loadBuilding(BASE + low[idx % low.length], a, 150, 4, 4.5, 4, Math.PI); idx++;
+        loadBuilding(BASE + low[idx % low.length], a, 165, 4, 4.5, 4, Math.PI); idx++;
+      }
+    }
+
     function createDowntown() {
       const BASE = 'https://nbakflorent-eng.github.io/road-rage-city-CITY-/';
       const skyB = ['building-skyscraper-a.glb','building-skyscraper-b.glb','building-skyscraper-c.glb','building-skyscraper-d.glb','building-skyscraper-e.glb'];
@@ -357,7 +376,7 @@
       for (const cx of islandCenters) {
         for (const cz of islandCenters) {
           if (Math.abs(cx) > 60 || Math.abs(cz) > 60) continue;
-          const ry = Math.abs(cx) >= Math.abs(cz) ? (cx>0 ? -Math.PI/2 : Math.PI/2) : (cz>0 ? Math.PI : 0);
+          const ry = facingToRoad(cx, cz);
           // 4 batiments aux coins de chaque ilot (mix gratte-ciels + immeubles)
           const corners = [[cx-7,cz-7],[cx+7,cz-7],[cx-7,cz+7],[cx+7,cz+7]];
           for (let k = 0; k < corners.length; k++) {
@@ -365,14 +384,14 @@
             if (!isSafe(bx, bz)) continue;
             const useSky = (k % 2 === 0);
             if (useSky) {
-              loadBuilding(BASE + skyB[si%5], bx, bz, 4, skyY[si%5], 4, ry);
+              loadBuilding(BASE + skyB[si%5], bx, bz, 4.5, 12 + (si%4), 4.5, ry);
               si++;
             } else {
-              loadBuilding(BASE + midB[mi%8], bx, bz, 3, midY[mi%4], 3, ry);
+              loadBuilding(BASE + midB[mi%8], bx, bz, 3.4, 7 + (mi%3), 3.4, ry);
               mi++;
             }
           }
-          if (isSafe(cx, cz)) loadBuilding(BASE + 'tree_oak.glb', cx, cz, 2.5, 2.5, 2.5, 0);
+          if (isSafe(cx, cz)) loadBuilding(BASE + 'tree_oak.glb', cx, cz, 4, 4, 4, 0);
         }
       }
       // Feux tricolores aux 4 coins des 9 grandes intersections du centre
@@ -381,7 +400,8 @@
         for (const rz of majorAxes) {
           const corners = [[rx+7,rz+7],[rx-7,rz+7],[rx+7,rz-7],[rx-7,rz-7]];
           for (const [lx, lz] of corners) {
-            loadBuilding(BASE + 'detail-light-traffic.glb', lx, lz, 2.5, 2.5, 2.5, 0);
+            loadBuilding(BASE + 'lightPostLarge.glb', lx, lz, 3, 3, 3, 0);
+            loadBuilding(BASE + 'detail-bench.glb', lx + 2.5, lz, 2, 2, 2, 0);
           }
         }
       }
@@ -392,7 +412,7 @@
           if (Math.abs(rx) <= 40 && Math.abs(rz) <= 40) continue; // deja des feux
           const corners = [[rx+7,rz+7],[rx-7,rz+7],[rx+7,rz-7],[rx-7,rz-7]];
           for (const [lx, lz] of corners) {
-            loadBuilding(BASE + 'lightPostModern.glb', lx, lz, 1.2, 3, 1.2, 0);
+            loadBuilding(BASE + 'lightPostModern.glb', lx, lz, 2.5, 2.5, 2.5, 0);
           }
         }
       }
@@ -410,23 +430,24 @@
         for (const cz of centers) {
           const inMid = (Math.abs(cx) > 60 || Math.abs(cz) > 60) && Math.abs(cx) <= 100 && Math.abs(cz) <= 100;
           if (!inMid) continue;
-          const ry = Math.abs(cx) >= Math.abs(cz) ? (cx>0 ? -Math.PI/2 : Math.PI/2) : (cz>0 ? Math.PI : 0);
+          const ry = facingToRoad(cx, cz);
           // 2 immeubles + 1 maison par ilot (mix midtown)
           const corners = [[cx-7, cz-7],[cx+7, cz+7],[cx+7, cz-7]];
           for (let k = 0; k < corners.length; k++) {
             const [bx, bz] = corners[k];
             if (!isSafe(bx, bz)) continue;
             if (k < 2) {
-              loadBuilding(BASE + midB[mi%19], bx, bz, 3, midY[mi%4], 3, ry);
+              loadBuilding(BASE + midB[mi%19], bx, bz, 3.2, 6 + (mi%4), 3.2, ry);
               mi++;
             } else {
-              loadBuilding(BASE + houseB[hi%6], bx, bz, 2.5, 2.5, 2.5, ry);
+              loadBuilding(BASE + houseB[hi%6], bx, bz, 3, 3.2, 3, ry);
               hi++;
             }
           }
           // 1 arbre dans le coin libre
           const tx = cx - 7, tz = cz + 7;
-          if (isSafe(tx, tz)) { loadBuilding(BASE + treeB[ti%3], tx, tz, 2.5, 2.5, 2.5, 0); ti++; }
+          if (isSafe(tx, tz)) { loadBuilding(BASE + treeB[ti%3], tx, tz, 3, 3, 3, 0); ti++; }
+          if (isSafe(cx, cz)) loadBuilding(BASE + 'planter.glb', cx, cz, 2, 2, 2, 0);
         }
       }
     }
@@ -442,14 +463,14 @@
         for (const cz of centers) {
           // Banlieue = ilots dont au moins une coord depasse 100 (ou exactement 140)
           if (Math.abs(cx) <= 100 && Math.abs(cz) <= 100) continue;
-          const ry = Math.abs(cx) >= Math.abs(cz) ? (cx>0 ? -Math.PI/2 : Math.PI/2) : (cz>0 ? Math.PI : 0);
+          const ry = facingToRoad(cx, cz);
           // 4 maisons aux coins de chaque ilot
           const corners = [[cx-7,cz-7],[cx+7,cz-7],[cx-7,cz+7],[cx+7,cz+7]];
           for (const [bx, bz] of corners) {
-            if (isSafe(bx, bz)) { loadBuilding(BASE + houseB[hi%19], bx, bz, 2.5, 2.5, 2.5, ry); hi++; }
+            if (isSafe(bx, bz)) { loadBuilding(BASE + houseB[hi%19], bx, bz, 3.4, 3.6, 3.4, ry); hi++; }
           }
           // 1 arbre au centre de l'ilot
-          if (isSafe(cx, cz)) { loadBuilding(BASE + treeB[ti%4], cx, cz, 2.5, 2.5, 2.5, 0); ti++; }
+          if (isSafe(cx, cz)) { loadBuilding(BASE + treeB[ti%4], cx, cz, 3, 3, 3, 0); loadBuilding(BASE + 'fence-low.glb', cx+4, cz, 2, 2, 2, 0); ti++; }
         }
       }
     }
@@ -519,6 +540,7 @@
       try { createDowntown(); } catch (e) { console.error('downtown:', e); }
       try { createMidtown(); } catch (e) { console.error('midtown:', e); }
       try { createSuburbs(); } catch (e) { console.error('suburbs:', e); }
+      try { createMapBorder(); } catch (e) { console.error('border:', e); }
       try { spawnNPCs(); } catch (e) { console.error('npc:', e); }
     }
     init();
