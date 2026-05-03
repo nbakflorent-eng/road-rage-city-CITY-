@@ -239,6 +239,8 @@
 
       var sd = document.getElementById('speed');
       if (sd) sd.textContent = Math.abs(Math.round(speed * 3.6));
+
+      updateNPCs(dt);
     }
 
     // MINIMAP
@@ -328,31 +330,50 @@
     function createDowntown() {
       const BASE = 'https://nbakflorent-eng.github.io/road-rage-city-CITY-/';
       const skyB = ['building-skyscraper-a.glb','building-skyscraper-b.glb','building-skyscraper-c.glb','building-skyscraper-d.glb','building-skyscraper-e.glb'];
+      const skyY = [9, 11, 8, 10, 7];
+      const midB = ['building-a.glb','building-b.glb','building-c.glb','building-d.glb','building-e.glb','building-f.glb','building-g.glb','building-h.glb'];
+      const midY = [6, 7, 5, 6];
       const islandCenters = [-100,-60,-20,20,60,100];
-      let si = 0;
+      let si = 0, mi = 0;
       for (const cx of islandCenters) {
         for (const cz of islandCenters) {
           if (Math.abs(cx) > 60 || Math.abs(cz) > 60) continue;
           const ry = Math.abs(cx) >= Math.abs(cz) ? (cx>0 ? -Math.PI/2 : Math.PI/2) : (cz>0 ? Math.PI : 0);
-          if (isSafe(cx, cz)) {
-            loadBuilding(BASE + skyB[si%5], cx, cz, 1, 1, 1, ry);
-            si++;
+          // 4 batiments aux coins de chaque ilot (mix gratte-ciels + immeubles)
+          const corners = [[cx-7,cz-7],[cx+7,cz-7],[cx-7,cz+7],[cx+7,cz+7]];
+          for (let k = 0; k < corners.length; k++) {
+            const [bx, bz] = corners[k];
+            if (!isSafe(bx, bz)) continue;
+            const useSky = (k % 2 === 0);
+            if (useSky) {
+              loadBuilding(BASE + skyB[si%5], bx, bz, 4, skyY[si%5], 4, ry);
+              si++;
+            } else {
+              loadBuilding(BASE + midB[mi%8], bx, bz, 3, midY[mi%4], 3, ry);
+              mi++;
+            }
           }
-          const treePos = [[cx-8, cz-8],[cx+8, cz+8]];
-          for (const [tx, tz] of treePos) {
-            if (isSafe(tx, tz)) loadBuilding(BASE + 'tree_oak.glb', tx, tz, 1, 1, 1, 0);
+          if (isSafe(cx, cz)) loadBuilding(BASE + 'tree_oak.glb', cx, cz, 2.5, 2.5, 2.5, 0);
+        }
+      }
+      // Feux tricolores aux 4 coins des 9 grandes intersections du centre
+      const majorAxes = [-40, 0, 40];
+      for (const rx of majorAxes) {
+        for (const rz of majorAxes) {
+          const corners = [[rx+7,rz+7],[rx-7,rz+7],[rx+7,rz-7],[rx-7,rz-7]];
+          for (const [lx, lz] of corners) {
+            loadBuilding(BASE + 'detail-light-traffic.glb', lx, lz, 2.5, 2.5, 2.5, 0);
           }
         }
       }
-      // Lampadaires aux 4 coins de chaque intersection
-      const roadAxes = [-120,-80,-40,0,40,80,120];
-      for (const rx of roadAxes) {
-        for (const rz of roadAxes) {
-          const isCenter = Math.abs(rx)<=40 && Math.abs(rz)<=40;
-          const lamp = isCenter ? 'lightPostLarge.glb' : 'lightPostModern.glb';
-          const corners = [[rx+6,rz+6],[rx-6,rz+6],[rx+6,rz-6],[rx-6,rz-6]];
-          for (const [lx,lz] of corners) {
-            loadBuilding(BASE+lamp, lx, lz, 1, 1, 1, 0);
+      // Lampadaires aux autres intersections
+      const allAxes = [-120,-80,-40,0,40,80,120];
+      for (const rx of allAxes) {
+        for (const rz of allAxes) {
+          if (Math.abs(rx) <= 40 && Math.abs(rz) <= 40) continue; // deja des feux
+          const corners = [[rx+7,rz+7],[rx-7,rz+7],[rx+7,rz-7],[rx-7,rz-7]];
+          for (const [lx, lz] of corners) {
+            loadBuilding(BASE + 'lightPostModern.glb', lx, lz, 1.2, 3, 1.2, 0);
           }
         }
       }
@@ -361,18 +382,32 @@
     function createMidtown() {
       const BASE = 'https://nbakflorent-eng.github.io/road-rage-city-CITY-/';
       const midB = ['building-a.glb','building-b.glb','building-c.glb','building-d.glb','building-e.glb','building-f.glb','building-g.glb','building-h.glb','building-i.glb','building-j.glb','building-k.glb','building-l.glb','building-m.glb','building-n.glb','building-o.glb','building-p.glb','building-q.glb','building-r.glb','building-s.glb'];
+      const midY = [5, 6, 4, 7];
+      const houseB = ['building-type-a.glb','building-type-b.glb','building-type-c.glb','building-type-d.glb','building-type-e.glb','building-type-f.glb'];
+      const treeB = ['tree_oak.glb','tree-large.glb','tree_fat.glb'];
       const centers = [-100,-60,-20,20,60,100];
-      let mi = 0;
+      let mi = 0, hi = 0, ti = 0;
       for (const cx of centers) {
         for (const cz of centers) {
           const inMid = (Math.abs(cx) > 60 || Math.abs(cz) > 60) && Math.abs(cx) <= 100 && Math.abs(cz) <= 100;
           if (!inMid) continue;
           const ry = Math.abs(cx) >= Math.abs(cz) ? (cx>0 ? -Math.PI/2 : Math.PI/2) : (cz>0 ? Math.PI : 0);
-          const pts = [[cx-5, cz],[cx+5, cz]];
-          for (const [bx, bz] of pts) {
-            if (isSafe(bx, bz)) { loadBuilding(BASE + midB[mi%19], bx, bz, 1, 1, 1, ry); mi++; }
+          // 2 immeubles + 1 maison par ilot (mix midtown)
+          const corners = [[cx-7, cz-7],[cx+7, cz+7],[cx+7, cz-7]];
+          for (let k = 0; k < corners.length; k++) {
+            const [bx, bz] = corners[k];
+            if (!isSafe(bx, bz)) continue;
+            if (k < 2) {
+              loadBuilding(BASE + midB[mi%19], bx, bz, 3, midY[mi%4], 3, ry);
+              mi++;
+            } else {
+              loadBuilding(BASE + houseB[hi%6], bx, bz, 2.5, 2.5, 2.5, ry);
+              hi++;
+            }
           }
-          if (isSafe(cx, cz+8)) loadBuilding(BASE + 'tree_oak.glb', cx, cz+8, 1, 1, 1, 0);
+          // 1 arbre dans le coin libre
+          const tx = cx - 7, tz = cz + 7;
+          if (isSafe(tx, tz)) { loadBuilding(BASE + treeB[ti%3], tx, tz, 2.5, 2.5, 2.5, 0); ti++; }
         }
       }
     }
@@ -380,16 +415,82 @@
     function createSuburbs() {
       const BASE = 'https://nbakflorent-eng.github.io/road-rage-city-CITY-/';
       const houseB = ['building-type-a.glb','building-type-b.glb','building-type-c.glb','building-type-d.glb','building-type-e.glb','building-type-f.glb','building-type-g.glb','building-type-h.glb','building-type-i.glb','building-type-j.glb','building-type-k.glb','building-type-l.glb','building-type-m.glb','building-type-n.glb','building-type-o.glb','building-type-p.glb','building-type-q.glb','building-type-r.glb','building-type-s.glb'];
-      const centers = [-100,-60,-20,20,60,100];
-      let hi = 0;
+      const treeB = ['tree_oak.glb','tree-large.glb','tree_fat.glb','tree_tall.glb'];
+      // Etend la grille pour peupler la banlieue (au-dela de la grille routiere centrale)
+      const centers = [-140,-100,-60,-20,20,60,100,140];
+      let hi = 0, ti = 0;
       for (const cx of centers) {
         for (const cz of centers) {
+          // Banlieue = ilots dont au moins une coord depasse 100 (ou exactement 140)
           if (Math.abs(cx) <= 100 && Math.abs(cz) <= 100) continue;
           const ry = Math.abs(cx) >= Math.abs(cz) ? (cx>0 ? -Math.PI/2 : Math.PI/2) : (cz>0 ? Math.PI : 0);
-          const pts = [[cx, cz-5],[cx, cz+5]];
-          for (const [bx, bz] of pts) {
-            if (isSafe(bx, bz)) { loadBuilding(BASE + houseB[hi%19], bx, bz, 1, 1, 1, ry); hi++; }
+          // 4 maisons aux coins de chaque ilot
+          const corners = [[cx-7,cz-7],[cx+7,cz-7],[cx-7,cz+7],[cx+7,cz+7]];
+          for (const [bx, bz] of corners) {
+            if (isSafe(bx, bz)) { loadBuilding(BASE + houseB[hi%19], bx, bz, 2.5, 2.5, 2.5, ry); hi++; }
           }
+          // 1 arbre au centre de l'ilot
+          if (isSafe(cx, cz)) { loadBuilding(BASE + treeB[ti%4], cx, cz, 2.5, 2.5, 2.5, 0); ti++; }
+        }
+      }
+    }
+
+    // NPC CARS — circulation procedurale sur les routes
+    var npcCars = [];
+    function _makeNpcCar(color) {
+      var g = new THREE.Group();
+      var dark = ((color & 0xfefefe) >> 1);
+      var b = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.5, 3.5), new THREE.MeshLambertMaterial({ color: color }));
+      b.position.y = 0.45; g.add(b);
+      var r = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.4, 1.8), new THREE.MeshLambertMaterial({ color: dark }));
+      r.position.set(0, 0.85, -0.2); g.add(r);
+      [[-0.85,-1.2],[0.85,-1.2],[-0.85,1.2],[0.85,1.2]].forEach(function (p) {
+        var w = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.22, 12), new THREE.MeshLambertMaterial({ color: 0x111111 }));
+        w.rotation.z = Math.PI/2;
+        w.position.set(p[0], 0.28, p[1]);
+        g.add(w);
+      });
+      return g;
+    }
+    function spawnNPCs() {
+      var COLORS = [0x2266cc, 0x22aa66, 0xeeaa22, 0x9966cc, 0xcc4422, 0xeeeeee, 0x222266];
+      var ROADS = [-120,-80,-40,0,40,80,120];
+      // Sur chaque route horizontale (axe z), 2 voitures chacune (1 par sens, decalees)
+      ROADS.forEach(function (z, idx) {
+        for (var k = 0; k < 2; k++) {
+          var c = _makeNpcCar(COLORS[(idx*2+k) % COLORS.length]);
+          var dir = (k === 0) ? 1 : -1;
+          var lane = (k === 0) ? 2.2 : -2.2; // voie droite/gauche
+          c.position.set(-130 + (idx*40 + k*60) % 240, 0.35, z + lane);
+          c.rotation.y = dir > 0 ? Math.PI/2 : -Math.PI/2;
+          scene.add(c);
+          npcCars.push({ mesh: c, axis: 'x', dir: dir, speed: 9 + Math.random()*4 });
+        }
+      });
+      // Sur chaque route verticale (axe x), 2 voitures
+      ROADS.forEach(function (x, idx) {
+        for (var k = 0; k < 2; k++) {
+          var c = _makeNpcCar(COLORS[(idx*2+k+3) % COLORS.length]);
+          var dir = (k === 0) ? 1 : -1;
+          var lane = (k === 0) ? 2.2 : -2.2;
+          c.position.set(x + lane, 0.35, -130 + (idx*40 + k*60) % 240);
+          c.rotation.y = dir > 0 ? 0 : Math.PI;
+          scene.add(c);
+          npcCars.push({ mesh: c, axis: 'z', dir: dir, speed: 9 + Math.random()*4 });
+        }
+      });
+    }
+    function updateNPCs(dt) {
+      for (var i = 0; i < npcCars.length; i++) {
+        var n = npcCars[i];
+        if (n.axis === 'x') {
+          n.mesh.position.x += n.dir * n.speed * dt;
+          if (n.mesh.position.x > 140) n.mesh.position.x = -140;
+          else if (n.mesh.position.x < -140) n.mesh.position.x = 140;
+        } else {
+          n.mesh.position.z += n.dir * n.speed * dt;
+          if (n.mesh.position.z > 140) n.mesh.position.z = -140;
+          else if (n.mesh.position.z < -140) n.mesh.position.z = 140;
         }
       }
     }
@@ -399,6 +500,7 @@
       try { createDowntown(); } catch (e) { console.error('downtown:', e); }
       try { createMidtown(); } catch (e) { console.error('midtown:', e); }
       try { createSuburbs(); } catch (e) { console.error('suburbs:', e); }
+      try { spawnNPCs(); } catch (e) { console.error('npc:', e); }
     }
     init();
 
