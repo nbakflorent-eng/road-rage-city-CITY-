@@ -87,20 +87,17 @@
     document.body.appendChild(renderer.domElement);
 
     // LIGHTS
-    var ambient = new THREE.AmbientLight(0xffffff, 3.0);
+    var ambient = new THREE.AmbientLight(0xffffff, 1.5);
     scene.add(ambient);
-    var sun = new THREE.DirectionalLight(0xffffff, 2.0);
-    sun.position.set(200, 400, 200);
+    var sun = new THREE.DirectionalLight(0xffffff, 1.0);
+    sun.position.set(100, 200, 100);
     sun.castShadow = false;
     scene.add(sun);
-    var fill = new THREE.DirectionalLight(0xffffff, 1.0);
-    fill.position.set(-200, 200, -200);
-    scene.add(fill);
 
     // GROUND
     var ground = new THREE.Mesh(
       new THREE.PlaneGeometry(500, 500),
-      new THREE.MeshLambertMaterial({ color: 0x444444 })
+      new THREE.MeshLambertMaterial({ color: 0x555555 })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = 0;
@@ -306,45 +303,45 @@
       return _gloader;
     }
     function loadBuilding(url, bx, bz, sx, sy, sz, rotY) {
+      // Pas de fallback pour arbres/lampadaires (evite cubes verts flottants)
+      var isDecor = url.indexOf('tree') >= 0 || url.indexOf('lightPost') >= 0 || url.indexOf('traffic') >= 0;
       // Fallback box couleurs vives selon type
       var fc = url.indexOf('skyscraper') >= 0 ? 0x4a90e2 :
                url.indexOf('building-type') >= 0 ? 0xe28b4a :
-               url.indexOf('lightPost') >= 0 ? 0x222222 :
-               url.indexOf('tree') >= 0 ? 0x2d5a2d :
-               url.indexOf('traffic') >= 0 ? 0x333333 :
                url.indexOf('building-') >= 0 ? 0xc44a4a :
                0xaaaaaa;
       var fbW = Math.max(sx, 1) * 0.9;
       var fbH = Math.max(sy, 1) * 1.0;
       var fbD = Math.max(sz, 1) * 0.9;
-      var fb = new THREE.Mesh(
-        new THREE.BoxGeometry(fbW, fbH, fbD),
-        new THREE.MeshLambertMaterial({ color: fc })
-      );
-      fb.position.set(bx, fbH / 2, bz);
-      fb.rotation.y = rotY;
-      scene.add(fb);
-      buildingBounds.push({
-        x: bx, z: bz,
-        hw: fbW / 2 + 0.5,
-        hd: fbD / 2 + 0.5
-      });
+      var fb = null;
+      if (!isDecor) {
+        fb = new THREE.Mesh(
+          new THREE.BoxGeometry(fbW, fbH, fbD),
+          new THREE.MeshLambertMaterial({ color: fc })
+        );
+        fb.position.set(bx, fbH / 2, bz);
+        fb.rotation.y = rotY;
+        scene.add(fb);
+        buildingBounds.push({ x: bx, z: bz, hw: fbW / 2 + 0.5, hd: fbD / 2 + 0.5 });
+      }
 
       var loader = _getLoader();
       if (!loader) return;
       loader.load(url, function (gltf) {
         try {
           var g = gltf.scene;
-          // Ne TOUCHE PAS aux materiaux : le GLTFLoader applique correctement
-          // le PBR + texture + KHR_texture_transform + doubleSided des GLB Kenney.
-          // Les modifications precedentes cassaient le rendu (FrontSide cachait les
-          // faces internes des batiments aux normales inversees).
+          g.traverse(function(child) {
+            if (child.isMesh && child.material) {
+              child.material.needsUpdate = true;
+              if (child.material.map) child.material.map.needsUpdate = true;
+            }
+          });
           g.scale.set(sx, sy, sz);
           g.rotation.y = rotY;
           scene.add(g);
           var box = new THREE.Box3().setFromObject(g);
           g.position.set(bx, -box.min.y + 0.05, bz);
-          scene.remove(fb);
+          if (fb) scene.remove(fb);
         } catch (e) {
           console.error('GLB onLoad error for', url, e);
         }
