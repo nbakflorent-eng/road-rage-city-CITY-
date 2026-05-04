@@ -49,15 +49,26 @@
       }
     });
   </script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script crossorigin="anonymous" src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script crossorigin="anonymous" src="https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
   <script>
   (function() {
     if (typeof THREE === 'undefined') {
       var d = document.getElementById('err');
-      if (d) { d.style.display = 'block'; d.textContent = 'Three.js non charge.'; }
+      if (d) { d.style.display = 'block'; d.textContent = 'Three.js non charge - CDN bloque? Essaie un autre reseau.'; }
       return;
     }
+    // Verifie WebGL
+    (function() {
+      try {
+        var c = document.createElement('canvas');
+        if (!c.getContext('webgl') && !c.getContext('experimental-webgl')) throw 1;
+      } catch(e) {
+        var d = document.getElementById('err');
+        if (d) { d.style.display = 'block'; d.textContent = 'WebGL non disponible sur ce navigateur.'; }
+        return;
+      }
+    })();
 
     // SCENE
     var scene = new THREE.Scene();
