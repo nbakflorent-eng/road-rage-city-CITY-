@@ -9,8 +9,8 @@
 body{overflow:hidden;background:#000;}
 canvas{display:block;}
 #hud{position:fixed;top:10px;left:10px;color:#fff;font:bold 14px monospace;z-index:10;pointer-events:none;line-height:1.6;text-shadow:1px 1px 3px rgba(0,0,0,0.8);}
-#minimap-container{position:fixed;bottom:12px;left:12px;z-index:10;pointer-events:none;}
-#minimap{border:2px solid rgba(255,255,255,0.7);border-radius:50%;}
+#minimap-container{position:fixed;bottom:10px;left:10px;z-index:10;pointer-events:none;}
+#minimap{border:2px solid #ffffff;border-radius:50%;}
 </style>
 </head>
 <body>
@@ -178,7 +178,7 @@ function createGround(){
     [-1,1].forEach(function(side){
       var sw = new THREE.Mesh(
         new THREE.PlaneGeometry(700, SIDEWALK_W),
-        new THREE.MeshLambertMaterial({color:0xdddddd})
+        new THREE.MeshLambertMaterial({color:0xaaaaaa})
       );
       sw.rotation.x = -PI/2;
       sw.position.set(0, 0.02, rz + side*(ROAD_W/2 + SIDEWALK_W/2));
@@ -211,7 +211,7 @@ function createGround(){
     [-1,1].forEach(function(side){
       var sw = new THREE.Mesh(
         new THREE.PlaneGeometry(SIDEWALK_W, 700),
-        new THREE.MeshLambertMaterial({color:0xdddddd})
+        new THREE.MeshLambertMaterial({color:0xaaaaaa})
       );
       sw.rotation.x = -PI/2;
       sw.position.set(rx + side*(ROAD_W/2 + SIDEWALK_W/2), 0.02, 0);
@@ -575,54 +575,62 @@ var mctx = minimapCanvas.getContext('2d');
 function drawMinimap(){
   var w = minimapCanvas.width;
   var h = minimapCanvas.height;
-  var scale = 0.45;
+  var sc = 0.45;
   var cx = car.position.x;
   var cz = car.position.z;
+  var rot = -car.rotation.y;
 
   mctx.clearRect(0,0,w,h);
-  // Circle clip
   mctx.save();
+  // Circle clip
   mctx.beginPath();
   mctx.arc(w/2, h/2, w/2, 0, PI*2);
   mctx.clip();
-  mctx.fillStyle = 'rgba(0,0,0,0.6)';
+  // Black background
+  mctx.fillStyle = 'rgba(0,0,0,0.8)';
   mctx.fillRect(0,0,w,h);
 
-  // Roads
-  mctx.strokeStyle = '#555';
-  mctx.lineWidth = 2;
+  // Rotate around center (car heading)
+  mctx.translate(w/2, h/2);
+  mctx.rotate(rot);
+
+  // Roads (grey lines) — draw relative to car position
+  mctx.strokeStyle = '#666';
+  mctx.lineWidth = 1.5;
   ROAD_AXES.forEach(function(r){
-    // Horizontal
-    var hy = h/2 + (r - cz)*scale;
+    // Horizontal road (fixed Z = r)
+    var ry = (r - cz) * sc;
     mctx.beginPath();
-    mctx.moveTo(0, hy);
-    mctx.lineTo(w, hy);
+    mctx.moveTo(-w, ry);
+    mctx.lineTo(w, ry);
     mctx.stroke();
-    // Vertical
-    var vx = w/2 + (r - cx)*scale;
+    // Vertical road (fixed X = r)
+    var rx = (r - cx) * sc;
     mctx.beginPath();
-    mctx.moveTo(vx, 0);
-    mctx.lineTo(vx, h);
+    mctx.moveTo(rx, -h);
+    mctx.lineTo(rx, h);
     mctx.stroke();
   });
 
-  // NPC vehicles (blue dots)
+  // NPC vehicles (blue dots 2px)
   mctx.fillStyle = '#4488ff';
   npcList.forEach(function(npc){
-    var nx = w/2 + (npc.mesh.position.x - cx)*scale;
-    var ny = h/2 + (npc.mesh.position.z - cz)*scale;
-    if(nx >= 0 && nx <= w && ny >= 0 && ny <= h){
-      mctx.beginPath();
-      mctx.arc(nx, ny, 3, 0, PI*2);
-      mctx.fill();
-    }
+    var dx = (npc.mesh.position.x - cx) * sc;
+    var dz = (npc.mesh.position.z - cz) * sc;
+    mctx.beginPath();
+    mctx.arc(dx, dz, 2, 0, PI*2);
+    mctx.fill();
   });
 
-  // Player (red dot)
+  // Reset rotation for player dot (always at center)
+  mctx.setTransform(1,0,0,1,0,0);
+
+  // Player (red dot 4px at center)
   mctx.fillStyle = '#ff2222';
   mctx.beginPath();
   mctx.arc(w/2, h/2, 4, 0, PI*2);
   mctx.fill();
+
   mctx.restore();
 }
 
