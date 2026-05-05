@@ -8,23 +8,20 @@
 *{margin:0;padding:0;box-sizing:border-box;}
 body{overflow:hidden;background:#000;}
 canvas{display:block;}
-#hud{position:fixed;top:12px;left:12px;background:rgba(0,0,0,0.65);color:#ffffff;font:bold 14px monospace;padding:12px 16px;border-radius:8px;z-index:10;pointer-events:none;line-height:1.7;}
-#hud .title{font-size:16px;color:#ff4444;margin-bottom:4px;letter-spacing:1px;}
+#hud{position:fixed;top:10px;left:10px;color:#fff;font:bold 14px monospace;z-index:10;pointer-events:none;line-height:1.6;text-shadow:1px 1px 3px rgba(0,0,0,0.8);}
 #minimap-container{position:fixed;bottom:12px;left:12px;z-index:10;pointer-events:none;}
-#minimap{border:1px solid #fff;}
+#minimap{border:2px solid rgba(255,255,255,0.7);border-radius:50%;}
 </style>
 </head>
 <body>
 
 <div id="hud">
-<div class="title">🚗 ROAD RAGE CITY</div>
-Vitesse : <span id="speed-val">0</span> km/h<br>
 ZQSD / WASD — conduire<br>
-K/Y/I/M — minimap
+Vitesse : <span id="speed-val">0</span> km/h
 </div>
 
 <div id="minimap-container">
-<canvas id="minimap" width="140" height="140"></canvas>
+<canvas id="minimap" width="120" height="120"></canvas>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -112,18 +109,18 @@ function loadGLB(url, x, z, sx, sy, sz, rotY, addBounds){
     loader.load(url, function(gltf){
       var model = gltf.scene;
       model.scale.set(sx, sy, sz);
-      var box = new THREE.Box3().setFromObject(model);
-      model.position.set(x, -box.min.y + 0.05, z);
       model.rotation.y = rotY;
       model.traverse(function(child){
         child.castShadow = false;
         child.receiveShadow = false;
       });
       scene.add(model);
+      var box = new THREE.Box3().setFromObject(model);
+      model.position.set(x, -box.min.y + 0.05, z);
       if(addBounds !== false){
-        var bx = new THREE.Box3().setFromObject(model);
-        var hw = (bx.max.x - bx.min.x)/2 + 0.5;
-        var hd = (bx.max.z - bx.min.z)/2 + 0.5;
+        var bx2 = new THREE.Box3().setFromObject(model);
+        var hw = (bx2.max.x - bx2.min.x)/2 + 0.5;
+        var hd = (bx2.max.z - bx2.min.z)/2 + 0.5;
         buildingBounds.push({x: model.position.x, z: model.position.z, hw: hw, hd: hd});
       }
       done();
@@ -181,7 +178,7 @@ function createGround(){
     [-1,1].forEach(function(side){
       var sw = new THREE.Mesh(
         new THREE.PlaneGeometry(700, SIDEWALK_W),
-        new THREE.MeshLambertMaterial({color:0xcccccc})
+        new THREE.MeshLambertMaterial({color:0xdddddd})
       );
       sw.rotation.x = -PI/2;
       sw.position.set(0, 0.02, rz + side*(ROAD_W/2 + SIDEWALK_W/2));
@@ -192,7 +189,7 @@ function createGround(){
     for(var mx=-340; mx<=340; mx+=10){
       var mark = new THREE.Mesh(
         new THREE.PlaneGeometry(3, 0.4),
-        new THREE.MeshLambertMaterial({color:0xffdd00})
+        new THREE.MeshLambertMaterial({color:0xffcc00})
       );
       mark.rotation.x = -PI/2;
       mark.position.set(mx, 0.03, rz);
@@ -214,7 +211,7 @@ function createGround(){
     [-1,1].forEach(function(side){
       var sw = new THREE.Mesh(
         new THREE.PlaneGeometry(SIDEWALK_W, 700),
-        new THREE.MeshLambertMaterial({color:0xcccccc})
+        new THREE.MeshLambertMaterial({color:0xdddddd})
       );
       sw.rotation.x = -PI/2;
       sw.position.set(rx + side*(ROAD_W/2 + SIDEWALK_W/2), 0.02, 0);
@@ -225,7 +222,7 @@ function createGround(){
     for(var mz=-340; mz<=340; mz+=10){
       var mark = new THREE.Mesh(
         new THREE.PlaneGeometry(0.4, 3),
-        new THREE.MeshLambertMaterial({color:0xffdd00})
+        new THREE.MeshLambertMaterial({color:0xffcc00})
       );
       mark.rotation.x = -PI/2;
       mark.position.set(rx, 0.03, mz);
@@ -293,7 +290,7 @@ scene.add(car);
 // Physics state
 var speed = 0;
 var MAX_SPEED = 27.7; // 100 km/h
-var MAX_REVERSE = -5.56; // -20 km/h
+var MAX_REVERSE = -8; // ~29 km/h reverse
 
 // ═══════════════════════════════════════════
 // INPUT
@@ -303,9 +300,9 @@ window.addEventListener('keydown', function(e){
   keys[e.key.toLowerCase()] = true;
   // Minimap sizes
   var mc = document.getElementById('minimap');
-  if(e.key.toLowerCase()==='k'){mc.width=140;mc.height=140;}
-  if(e.key.toLowerCase()==='y'){mc.width=220;mc.height=220;}
-  if(e.key.toLowerCase()==='i'){mc.width=320;mc.height=320;}
+  if(e.key.toLowerCase()==='k'){mc.width=120;mc.height=120;}
+  if(e.key.toLowerCase()==='y'){mc.width=200;mc.height=200;}
+  if(e.key.toLowerCase()==='i'){mc.width=300;mc.height=300;}
   if(e.key.toLowerCase()==='m'){mc.width=500;mc.height=500;}
 });
 window.addEventListener('keyup', function(e){
@@ -364,17 +361,12 @@ function createCityContent(){
           loadGLB(BASE + skyscrapers[skyIdx % 5], cx, cz, 8,8,8, rot, true);
           skyIdx++;
         }
-        // Trees at corners
-        if(isSafe(cx-9, cz-9)) loadGLB(BASE + centerTrees[ctreeIdx % 5], cx-9, cz-9, 8,8,8, 0, false);
-        ctreeIdx++;
-        if(isSafe(cx+9, cz+9)) loadGLB(BASE + centerTrees[ctreeIdx % 5], cx+9, cz+9, 8,8,8, 0, false);
+        // 1 tree per island
+        if(isSafe(cx+9, cz+9)) loadGLB(BASE + centerTrees[ctreeIdx % 5], cx+9, cz+9, 6,6,6, 0, false);
         ctreeIdx++;
         // Furniture
         if(isSafe(cx-5, cz+6)) loadGLB(BASE + "detail-bench.glb", cx-5, cz+6, 3,3,3, rot, false);
-        if(isSafe(cx+5, cz+6)) loadGLB(BASE + "detail-bench.glb", cx+5, cz+6, 3,3,3, rot, false);
         if(isSafe(cx-7, cz-7)) loadGLB(BASE + "planter.glb", cx-7, cz-7, 3,3,3, 0, false);
-        if(isSafe(cx+7, cz+7)) loadGLB(BASE + "detail-dumpster-closed.glb", cx+7, cz+7, 3,3,3, 0, false);
-        if(isSafe(cx+6, cz-6)) loadGLB(BASE + "fire_hydrant_low_poly.glb", cx+6, cz-6, 2,2,2, 0, false);
         // Sign
         if(isSafe(cx+8, cz+8)) loadGLB(BASE + signs[signIdx % 2], cx+8, cz+8, 3,3,3, rot, false);
         signIdx++;
@@ -383,39 +375,31 @@ function createCityContent(){
       else if(acx <= 100 && acz <= 100){
         // 2 buildings
         if(isSafe(cx-5, cz)){
-          loadGLB(BASE + midBldgs[midIdx % 19], cx-5, cz, 6,6,6, rot, true);
+          loadGLB(BASE + midBldgs[midIdx % 19], cx-5, cz, 7,7,7, rot, true);
           midIdx++;
         }
         if(isSafe(cx+5, cz)){
-          loadGLB(BASE + midBldgs[midIdx % 19], cx+5, cz, 6,6,6, rot, true);
+          loadGLB(BASE + midBldgs[midIdx % 19], cx+5, cz, 7,7,7, rot, true);
           midIdx++;
         }
-        // Tree
-        if(isSafe(cx, cz+9)) loadGLB(BASE + midTrees[mtreeIdx % 6], cx, cz+9, 8,8,8, 0, false);
+        // 1 tree
+        if(isSafe(cx, cz+9)) loadGLB(BASE + midTrees[mtreeIdx % 6], cx, cz+9, 6,6,6, 0, false);
         mtreeIdx++;
-        // Furniture
-        if(isSafe(cx-8, cz+3)) loadGLB(BASE + "planter.glb", cx-8, cz+3, 3,3,3, 0, false);
-        if(isSafe(cx+8, cz-3)) loadGLB(BASE + "detail-light-single.glb", cx+8, cz-3, 4,4,4, 0, false);
       }
       // SUBURB: |cx|>100 OR |cz|>100
       else {
         // 2 houses
         if(isSafe(cx, cz-5)){
-          loadGLB(BASE + subHouses[subIdx % 21], cx, cz-5, 5,5,5, rot, true);
+          loadGLB(BASE + subHouses[subIdx % 21], cx, cz-5, 6,6,6, rot, true);
           subIdx++;
         }
         if(isSafe(cx, cz+5)){
-          loadGLB(BASE + subHouses[subIdx % 21], cx, cz+5, 5,5,5, rot, true);
+          loadGLB(BASE + subHouses[subIdx % 21], cx, cz+5, 6,6,6, rot, true);
           subIdx++;
         }
-        // Trees
-        if(isSafe(cx, cz)) loadGLB(BASE + subTrees[streeIdx % 5], cx, cz, 8,8,8, 0, false);
+        // 1 small tree
+        if(isSafe(cx, cz)) loadGLB(BASE + subTrees[streeIdx % 5], cx, cz, 4,4,4, 0, false);
         streeIdx++;
-        // Fences
-        if(isSafe(cx-4, cz-8)) loadGLB(BASE + "fence-low.glb", cx-4, cz-8, 3,3,3, 0, false);
-        if(isSafe(cx+4, cz-8)) loadGLB(BASE + "fence-low.glb", cx+4, cz-8, 3,3,3, 0, false);
-        if(isSafe(cx-4, cz+8)) loadGLB(BASE + "fence_simple.glb", cx-4, cz+8, 3,3,3, 0, false);
-        if(isSafe(cx+4, cz+8)) loadGLB(BASE + "fence_simple.glb", cx+4, cz+8, 3,3,3, 0, false);
         // Green patch
         var gp = new THREE.Mesh(
           new THREE.PlaneGeometry(12,12),
@@ -438,7 +422,7 @@ function createCityContent(){
       if(arx <= 40 && arz <= 40){
         // Large light posts at 4 corners
         [[6,6],[-6,6],[6,-6],[-6,-6]].forEach(function(off){
-          loadGLB(BASE + "lightPostLarge.glb", rx+off[0], rz+off[1], 4,4,4, 0, false);
+          loadGLB(BASE + "lightPostLarge.glb", rx+off[0], rz+off[1], 5,5,5, 0, false);
         });
         // Traffic lights
         loadGLB(BASE + "detail-light-traffic.glb", rx+5, rz+5, 3,3,3, 0, false);
@@ -447,13 +431,13 @@ function createCityContent(){
       // Midtown intersections: 40<|rx|<=80 OR 40<|rz|<=80, within 100
       else if(arx <= 100 && arz <= 100 && (arx > 40 || arz > 40)){
         [[6,6],[-6,6],[6,-6],[-6,-6]].forEach(function(off){
-          loadGLB(BASE + "lightPostModern.glb", rx+off[0], rz+off[1], 4,4,4, 0, false);
+          loadGLB(BASE + "lightPostModern.glb", rx+off[0], rz+off[1], 5,5,5, 0, false);
         });
       }
       // Suburb intersections
       else {
         [[6,6],[-6,6],[6,-6],[-6,-6]].forEach(function(off){
-          loadGLB(BASE + "light-curved.glb", rx+off[0], rz+off[1], 4,4,4, 0, false);
+          loadGLB(BASE + "light-curved.glb", rx+off[0], rz+off[1], 5,5,5, 0, false);
         });
       }
     });
@@ -515,7 +499,7 @@ var npcDefs = [
 function createNPCVehicles(){
   npcDefs.forEach(function(def){
     loadGLBAsync(BASE + def.file, function(model){
-      model.scale.set(4,4,4);
+      model.scale.set(5,5,5);
       // Compute y from bounding box
       var box = new THREE.Box3().setFromObject(model);
       var yOff = -box.min.y + 0.05;
@@ -596,6 +580,11 @@ function drawMinimap(){
   var cz = car.position.z;
 
   mctx.clearRect(0,0,w,h);
+  // Circle clip
+  mctx.save();
+  mctx.beginPath();
+  mctx.arc(w/2, h/2, w/2, 0, PI*2);
+  mctx.clip();
   mctx.fillStyle = 'rgba(0,0,0,0.6)';
   mctx.fillRect(0,0,w,h);
 
@@ -634,6 +623,7 @@ function drawMinimap(){
   mctx.beginPath();
   mctx.arc(w/2, h/2, 4, 0, PI*2);
   mctx.fill();
+  mctx.restore();
 }
 
 // ═══════════════════════════════════════════
@@ -653,18 +643,18 @@ function animate(){
   var right = keys['d'];
 
   if(fwd){
-    speed += 8 * delta;
+    speed += 12 * delta;
     if(speed > MAX_SPEED) speed = MAX_SPEED;
   } else if(bwd){
     if(speed > 0){
-      speed *= Math.pow(0.7, delta*60);
+      speed *= Math.pow(0.75, delta*60);
       if(speed < 0.1) speed = 0;
     } else {
-      speed -= 4 * delta;
+      speed -= 6 * delta;
       if(speed < MAX_REVERSE) speed = MAX_REVERSE;
     }
   } else {
-    speed *= Math.pow(0.85, delta*60);
+    speed *= Math.pow(0.88, delta*60);
     if(Math.abs(speed) < 0.05) speed = 0;
   }
 
