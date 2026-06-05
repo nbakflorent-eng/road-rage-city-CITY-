@@ -36,7 +36,7 @@ const TANK_ZONE_Y = () => H * 0.09;     // where tanks sit
 
 // ─── MOB POOL ─────────────────────────────────────────────────────────────────
 // Each mob: x y vx vy alive team animFrame animTick
-const POOL = 1200, S = 8;
+const POOL = 600, S = 8;
 const BUF = new Float32Array(POOL * S);
 const UID = new Uint32Array(POOL);
 let uidSeq = 0, nGreen = 0, nRed = 0;
@@ -132,7 +132,7 @@ function startLevel(){
   poolReset(); PARS.length=0; NUMS.length=0; spawnQ.length=0;
   ptrX=W/2; barrelAngle=-Math.PI/2; holding=false; fireTimer=0;
 
-  FIRE_RATE = Math.max(4, 8 - Math.floor(level/3));
+  FIRE_RATE = Math.max(2, 4 - Math.floor(level/4));
   ENM_RATE  = Math.max(50, 85 - level*6);
   enmTimer  = 70;
 
@@ -333,7 +333,6 @@ function update(){
   }
 
   // Combat: green vs red → BOTH die (1-for-1 annihilation)
-  buildSpatial();
   const dying=new Set();
   for(let i=0;i<POOL;i++){
     const b=i*S; if(!BUF[b+4]||dying.has(i)) continue;
