@@ -5,984 +5,453 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Mob Control</title>
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { background: #1a1a2e; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; font-family: Arial, sans-serif; }
-canvas { display: block; cursor: none; touch-action: none; }
-#ui { position: absolute; top: 0; left: 0; width: 100%; pointer-events: none; }
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#111;display:flex;justify-content:center;align-items:center;height:100vh;overflow:hidden;}
+canvas{display:block;touch-action:none;}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <script>
 'use strict';
-
-// ─── Canvas & resize ───────────────────────────────────────────────────────
-const canvas = document.getElementById('c');
-const ctx = canvas.getContext('2d');
+const C = document.getElementById('c');
+const X = C.getContext('2d');
 let W = 0, H = 0;
-
-function resize() {
-  const maxW = Math.min(window.innerWidth, 480);
-  const maxH = window.innerHeight;
-  W = maxW; H = maxH;
-  canvas.width = W; canvas.height = H;
-}
+function resize(){W=Math.min(window.innerWidth,430);H=window.innerHeight;C.width=W;C.height=H;}
 resize();
-window.addEventListener('resize', () => { resize(); });
+window.addEventListener('resize',resize);
 
-// ─── Constants ─────────────────────────────────────────────────────────────
-const MOB_POOL   = 2000;
-const MOB_R      = 7;
-const MOB_SPEED  = 2.4;
-const ENEMY_SPEED= 1.8;
-const CELL_SIZE  = 28;
+// ── Pool ────────────────────────────────────────────────────────────────────
+// stride: x y vx vy alive team frame ftimer
+const SZ=8, POOL=1800;
+const M=new Float32Array(POOL*SZ);
+const IDS=new Uint32Array(POOL); // unique birth IDs for gate dedup
+let idCtr=0, nG=0, nR=0;
+const FL=[];
 
-// ─── Typed-array mob pool ──────────────────────────────────────────────────
-// Per mob: x, y, vx, vy, alive(1/0), team(0=green,1=red), frame, frameTimer, trailX, trailY
-const STRIDE = 10;
-const mobBuf  = new Float32Array(MOB_POOL * STRIDE);
-const deadIdx = [];
-let   liveCount = 0;
+function resetPool(){M.fill(0);FL.length=0;for(let i=POOL-1;i>=0;i--)FL.push(i);nG=nR=0;}
 
-function resetPools() {
-  mobBuf.fill(0);
-  deadIdx.length = 0;
-  for (let i = MOB_POOL - 1; i >= 0; i--) deadIdx.push(i);
-  liveCount = 0;
+function alloc(x,y,vx,vy,team){
+  if(!FL.length)return -1;
+  const i=FL.pop(), b=i*SZ;
+  M[b]=x;M[b+1]=y;M[b+2]=vx;M[b+3]=vy;M[b+4]=1;M[b+5]=team;M[b+6]=0;M[b+7]=0;
+  IDS[i]=++idCtr;
+  if(team===0)nG++;else nR++;
+  return i;
 }
 
-function spawnMob(x, y, vx, vy, team) {
-  if (deadIdx.length === 0) return -1;
-  const idx = deadIdx.pop();
-  const o = idx * STRIDE;
-  mobBuf[o+0] = x;
-  mobBuf[o+1] = y;
-  mobBuf[o+2] = vx;
-  mobBuf[o+3] = vy;
-  mobBuf[o+4] = 1;   // alive
-  mobBuf[o+5] = team;
-  mobBuf[o+6] = 0;   // anim frame
-  mobBuf[o+7] = 0;   // frame timer
-  mobBuf[o+8] = x;   // trail x
-  mobBuf[o+9] = y;   // trail y
-  liveCount++;
-  return idx;
+function kill(i){
+  const b=i*SZ;
+  if(!M[b+4])return;
+  if(M[b+5]===0)nG--;else nR--;
+  M[b+4]=0;FL.push(i);
 }
 
-function killMob(idx) {
-  const o = idx * STRIDE;
-  if (mobBuf[o+4] === 0) return;
-  mobBuf[o+4] = 0;
-  deadIdx.push(idx);
-  liveCount--;
+// ── Spatial hash ─────────────────────────────────────────────────────────────
+const CSIZ=26, GRID=new Map();
+function buildGrid(){
+  GRID.clear();
+  for(let i=0;i<POOL;i++){const b=i*SZ;if(!M[b+4])continue;
+    const k=((M[b]/CSIZ)|0)*100000+((M[b+1]/CSIZ)|0);
+    let c=GRID.get(k);if(!c){c=[];GRID.set(k,c);}c.push(i);}
+}
+function near(x,y){
+  const out=[],cx=(x/CSIZ)|0,cy=(y/CSIZ)|0;
+  for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
+    const c=GRID.get((cx+dx)*100000+(cy+dy));if(c)for(const v of c)out.push(v);}
+  return out;
 }
 
-// ─── Spatial hash ──────────────────────────────────────────────────────────
-const hashMap = new Map();
+// ── Particles ─────────────────────────────────────────────────────────────────
+const PS=[];
+function burst(x,y,col,n=8){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=2+Math.random()*3.5;PS.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,l:1,col,sz:2+Math.random()*3});}}
+function tickPS(){for(let i=PS.length-1;i>=0;i--){const p=PS[i];p.x+=p.vx;p.y+=p.vy;p.vy+=0.14;p.l-=0.042;if(p.l<=0)PS.splice(i,1);}}
+function drawPS(){X.save();for(const p of PS){X.globalAlpha=p.l;X.fillStyle=p.col;X.fillRect(p.x-p.sz/2,p.y-p.sz/2,p.sz,p.sz);}X.globalAlpha=1;X.restore();}
 
-function hashKey(cx, cy) { return (cx & 0xFFFF) | ((cy & 0xFFFF) << 16); }
+// ── Floaters ──────────────────────────────────────────────────────────────────
+const FL2=[];
+function floater(x,y,t,col){FL2.push({x,y,vy:-1.8,t,col,l:1.4});}
+function tickFL2(){for(let i=FL2.length-1;i>=0;i--){const f=FL2[i];f.y+=f.vy;f.l-=0.024;if(f.l<=0)FL2.splice(i,1);}}
+function drawFL2(){X.save();X.textAlign='center';for(const f of FL2){X.globalAlpha=Math.min(1,f.l);X.font='bold 20px Arial';X.strokeStyle='#000';X.lineWidth=3;X.strokeText(f.t,f.x,f.y);X.fillStyle=f.col;X.fillText(f.t,f.x,f.y);}X.globalAlpha=1;X.restore();}
 
-function buildHash() {
-  hashMap.clear();
-  for (let i = 0; i < MOB_POOL; i++) {
-    const o = i * STRIDE;
-    if (mobBuf[o+4] === 0) continue;
-    const cx = (mobBuf[o+0] / CELL_SIZE) | 0;
-    const cy = (mobBuf[o+1] / CELL_SIZE) | 0;
-    const k  = hashKey(cx, cy);
-    let list = hashMap.get(k);
-    if (!list) { list = []; hashMap.set(k, list); }
-    list.push(i);
-  }
+// ── Shake ─────────────────────────────────────────────────────────────────────
+let shN=0,shM=0;
+function shake(m){shN=14;shM=m;}
+
+// ── Lane helpers ──────────────────────────────────────────────────────────────
+const MR=7;
+const laneTopY=()=>H*0.10, laneBotY=()=>H*0.78, cannonY=()=>H*0.87;
+
+function laneEdge(t){
+  const tw=W*0.09, bw=W*0.47, h=tw+(bw-tw)*t;
+  return{l:W/2-h, r:W/2+h};
 }
+function laneT(y){return(y-laneTopY())/(laneBotY()-laneTopY());}
 
-function getNeighbors(x, y) {
-  const cx = (x / CELL_SIZE) | 0;
-  const cy = (y / CELL_SIZE) | 0;
-  const res = [];
-  for (let dx = -1; dx <= 1; dx++) {
-    for (let dy = -1; dy <= 1; dy++) {
-      const list = hashMap.get(hashKey(cx+dx, cy+dy));
-      if (list) for (const idx of list) res.push(idx);
-    }
-  }
-  return res;
-}
+// ── Game state ────────────────────────────────────────────────────────────────
+let level=1, hand=0, pend=0; // hand=unfired, pend=gate spawns in flight
+let tanks=[], gates=[], queued=[];
+let fireT=0, FIRE_INT=8, enemyT=0, ENEMY_INT=140;
+let holding=false, ptrX=0, aimAngle=-Math.PI/2;
+let gst='play', gstCD=0; // game state
 
-// ─── Particles ─────────────────────────────────────────────────────────────
-const particles = [];
+const GSPD=3.4, RSPD=2.4;
 
-function spawnParticles(x, y, color) {
-  for (let i = 0; i < 6; i++) {
-    const a = Math.random() * Math.PI * 2;
-    const s = 1.5 + Math.random() * 3;
-    particles.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life: 1, color, size: 3+Math.random()*3 });
-  }
-}
+// ── Init ──────────────────────────────────────────────────────────────────────
+function initLevel(){
+  resetPool();PS.length=0;FL2.length=0;queued.length=0;
+  ptrX=W/2; aimAngle=-Math.PI/2; holding=false; fireT=0;
+  hand=12+level*4; pend=0;
+  FIRE_INT=Math.max(4,11-Math.floor(level/2));
+  ENEMY_INT=Math.max(40,140-level*10);
+  enemyT=80;
 
-function updateParticles() {
-  for (let i = particles.length - 1; i >= 0; i--) {
-    const p = particles[i];
-    p.x += p.vx; p.y += p.vy;
-    p.vy += 0.1;
-    p.life -= 0.04;
-    if (p.life <= 0) particles.splice(i, 1);
-  }
-}
-
-function drawParticles() {
-  for (const p of particles) {
-    ctx.globalAlpha = p.life;
-    ctx.fillStyle = p.color;
-    ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
-  }
-  ctx.globalAlpha = 1;
-}
-
-// ─── Floating damage numbers ────────────────────────────────────────────────
-const floaters = [];
-
-function spawnFloater(x, y, text, color) {
-  floaters.push({ x, y, vy: -1.5, text, color, life: 1.2 });
-}
-
-function updateFloaters() {
-  for (let i = floaters.length - 1; i >= 0; i--) {
-    const f = floaters[i];
-    f.y += f.vy;
-    f.life -= 0.025;
-    if (f.life <= 0) floaters.splice(i, 1);
-  }
-}
-
-function drawFloaters() {
-  ctx.save();
-  for (const f of floaters) {
-    ctx.globalAlpha = Math.min(1, f.life);
-    ctx.font = 'bold 18px Arial';
-    ctx.fillStyle = f.color;
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 3;
-    ctx.textAlign = 'center';
-    ctx.strokeText(f.text, f.x, f.y);
-    ctx.fillText(f.text, f.x, f.y);
-  }
-  ctx.globalAlpha = 1;
-  ctx.restore();
-}
-
-// ─── Screen shake ───────────────────────────────────────────────────────────
-let shakeTimer = 0, shakeMag = 0;
-
-function triggerShake(mag) { shakeTimer = 12; shakeMag = mag; }
-
-// ─── Game state ─────────────────────────────────────────────────────────────
-let level = 1;
-let mobCount = 10;
-let shooting = false;
-let aimX = W / 2;
-let mouseX = W / 2;
-let shootTimer = 0;
-let SHOOT_INTERVAL = 8; // frames between shots
-
-// Gates
-let gates = [];
-
-// Tanks
-let tanks = [];
-
-// Enemy fire
-let enemyFireTimer = 0;
-let ENEMY_FIRE_INTERVAL = 150;
-
-// Level transition
-let levelState = 'playing'; // 'playing' | 'win' | 'lose' | 'transition'
-let transTimer = 0;
-
-// Cannon
-const CANNON_Y_OFFSET = 110; // from bottom
-let cannonX = W / 2;
-let cannonAngle = -Math.PI / 2; // pointing up
-
-// ─── Level setup ─────────────────────────────────────────────────────────────
-function getLaneX(t) {
-  // Lane perspective: at t=0 (top) narrow, at t=1 (bottom) full width
-  const minHalf = W * 0.12;
-  const maxHalf = W * 0.48;
-  const half = minHalf + (maxHalf - minHalf) * t;
-  return { left: W/2 - half, right: W/2 + half };
-}
-
-function setupLevel() {
-  resetPools();
-  particles.length = 0;
-  floaters.length = 0;
-
-  cannonX = W / 2;
-  aimX    = W / 2;
-  mouseX  = W / 2;
-
-  shooting = false;
-  shootTimer = 0;
-  mobCount = 10;
-
-  // Difficulty scaling
-  const numTanks   = level >= 3 ? 2 : 1;
-  const tankHP     = 20 + level * 10;
-  SHOOT_INTERVAL   = Math.max(4, 10 - level);
-  ENEMY_FIRE_INTERVAL = Math.max(60, 150 - level * 10);
-
-  // Create tanks
-  tanks = [];
-  const tankY = H * 0.12;
-  if (numTanks === 1) {
-    tanks.push({ x: W/2, y: tankY, hp: tankHP, maxHp: tankHP, flashTimer: 0, width: 60, height: 30 });
+  const nT=level>=3?2:1, hp=14+level*9;
+  tanks=[];
+  const ty=laneTopY()+10;
+  if(nT===1){
+    tanks.push({x:W/2,y:ty,hp,max:hp,fl:0,w:56,h:28});
   } else {
-    tanks.push({ x: W*0.32, y: tankY, hp: tankHP, maxHp: tankHP, flashTimer: 0, width: 55, height: 30 });
-    tanks.push({ x: W*0.68, y: tankY, hp: tankHP, maxHp: tankHP, flashTimer: 0, width: 55, height: 30 });
+    const e=laneEdge(laneT(ty));
+    tanks.push({x:e.l+(e.r-e.l)*0.28,y:ty,hp,max:hp,fl:0,w:50,h:26});
+    tanks.push({x:e.l+(e.r-e.l)*0.72,y:ty,hp,max:hp,fl:0,w:50,h:26});
   }
-
-  // Create gates
-  gates = [];
-  const gateRows = Math.min(5 + level, 8);
-  const laneTop    = H * 0.18;
-  const laneBottom = H * 0.72;
-  const spacing    = (laneBottom - laneTop) / (gateRows + 1);
-
-  for (let row = 0; row < gateRows; row++) {
-    const gy = laneTop + spacing * (row + 1);
-    const t  = (gy - laneTop) / (laneBottom - laneTop);
-    const lane = getLaneX(t);
-    const midX = W / 2;
-    const padding = 8;
-
-    // Left gate
-    const lg = makeGate(lane.left + padding, midX - padding, gy, row, false);
-    // Right gate
-    const rg = makeGate(midX + padding, lane.right - padding, gy, row, true);
-
-    gates.push(lg, rg);
-  }
-
-  enemyFireTimer = 60;
-  levelState = 'playing';
-  transTimer = 0;
+  buildGates();
+  gst='play'; gstCD=0;
 }
 
-function makeGate(x1, x2, y, row, isRight) {
-  // Decide gate bonus based on level and row
-  const trapChance = 0.08 + level * 0.01;
-  if (Math.random() < trapChance) {
-    const t = Math.random() < 0.5 ? { type: 'add', val: -5, label: '-5', color: '#e74c3c' }
-                                   : { type: 'mul', val: 0.5, label: '÷2', color: '#c0392b' };
-    return { x1, x2, y, h: 32, ...t, flashTimer: 0, passed: false };
+function buildGates(){
+  gates=[];
+  const rows=Math.min(5+Math.floor(level*0.7),9);
+  const ltY=laneTopY(), lbY=laneBotY();
+  const step=(lbY-ltY)/(rows+1);
+  for(let r=0;r<rows;r++){
+    const gy=ltY+step*(r+1);
+    const e=laneEdge(laneT(gy));
+    gates.push(mkG(e.l+5, W/2-5, gy, r));
+    gates.push(mkG(W/2+5, e.r-5, gy, r));
   }
+}
 
-  const pool = [];
-  if (level < 3) {
-    pool.push({ type:'add', val:5,  label:'+5',  color:'#27ae60' });
-    pool.push({ type:'add', val:10, label:'+10', color:'#27ae60' });
-    pool.push({ type:'add', val:15, label:'+15', color:'#2ecc71' });
-    pool.push({ type:'mul', val:2,  label:'×2',  color:'#2980b9' });
-    if (row > 2) pool.push({ type:'mul', val:3, label:'×3', color:'#8e44ad' });
+function mkG(x1,x2,y,row){
+  const h=28;
+  // trap 8% chance
+  if(Math.random()<0.08)
+    return{x1,x2,y,h,type:'add',val:-5,label:'-5',color:'#e74c3c',fl:0,vis:new Set()};
+  const tiers=[
+    [{type:'add',val:5,label:'+5',color:'#27ae60'},{type:'add',val:10,label:'+10',color:'#2ecc71'},{type:'mul',val:2,label:'×2',color:'#2980b9'}],
+    [{type:'add',val:10,label:'+10',color:'#2ecc71'},{type:'mul',val:2,label:'×2',color:'#2980b9'},{type:'mul',val:3,label:'×3',color:'#8e44ad'}],
+    [{type:'mul',val:3,label:'×3',color:'#8e44ad'},{type:'mul',val:5,label:'×5',color:'#e67e22'},{type:'add',val:20,label:'+20',color:'#27ae60'}],
+  ];
+  const tier=Math.min(2,Math.floor(level/2)+(row>=3?1:0));
+  const pool=tiers[Math.min(2,tier)];
+  return{x1,x2,y,h,...pool[(Math.random()*pool.length)|0],fl:0,vis:new Set()};
+}
+
+// ── Gate apply ────────────────────────────────────────────────────────────────
+function applyGate(g,mobIdx,mx,my){
+  const uid=IDS[mobIdx];
+  if(g.vis.has(uid))return;
+  g.vis.add(uid); g.fl=20;
+
+  if(g.type==='add'){
+    if(g.val<0){
+      // penalty: kill |val| green mobs
+      let k=Math.min(-g.val, nG+hand);
+      // kill from screen first
+      for(let i=0;i<POOL&&k>0;i++){const b=i*SZ;if(M[b+4]&&M[b+5]===0){kill(i);k--;}}
+      hand=Math.max(0, hand-k); // kill rest from hand
+    } else {
+      hand+=g.val; pend+=g.val;
+      for(let k=0;k<g.val;k++)
+        queued.push({d:k*3, x:mx+(Math.random()-.5)*24, y:my+(Math.random()-.5)*6,
+          vx:(Math.random()-.5)*1.6, vy:-(GSPD*(.8+Math.random()*.5)), t:0});
+    }
   } else {
-    pool.push({ type:'add', val:10, label:'+10', color:'#27ae60' });
-    pool.push({ type:'mul', val:2,  label:'×2',  color:'#2980b9' });
-    pool.push({ type:'mul', val:3,  label:'×3',  color:'#8e44ad' });
-    pool.push({ type:'mul', val:5,  label:'×5',  color:'#9b59b6' });
-    if (level >= 5) pool.push({ type:'mul', val:10, label:'×10', color:'#e67e22' });
-  }
-
-  const g = pool[(Math.random() * pool.length) | 0];
-  return { x1, x2, y, h: 32, ...g, flashTimer: 0, passed: false };
-}
-
-// ─── Mob count tally ─────────────────────────────────────────────────────────
-function countGreenMobs() {
-  let n = 0;
-  for (let i = 0; i < MOB_POOL; i++) {
-    const o = i * STRIDE;
-    if (mobBuf[o+4] === 1 && mobBuf[o+5] === 0) n++;
-  }
-  return n;
-}
-
-// ─── Cannon shoot ─────────────────────────────────────────────────────────────
-function shootMob() {
-  if (mobCount <= 0) return;
-  mobCount--;
-
-  const angle = cannonAngle;
-  const spd   = MOB_SPEED * 1.4;
-  const bx    = cannonX + Math.cos(angle) * 30;
-  const by    = (H - CANNON_Y_OFFSET) + Math.sin(angle) * 30;
-  spawnMob(bx, by, Math.cos(angle)*spd, Math.sin(angle)*spd, 0);
-}
-
-// ─── Gate collision check ─────────────────────────────────────────────────────
-function checkGates() {
-  for (let i = 0; i < MOB_POOL; i++) {
-    const o = i * STRIDE;
-    if (mobBuf[o+4] === 0 || mobBuf[o+5] !== 0) continue; // only live green
-    const mx = mobBuf[o+0], my = mobBuf[o+1];
-
-    for (const g of gates) {
-      if (g.passed) continue;
-      // Check if mob center crosses gate band
-      const prevY = my - mobBuf[o+3];
-      if (prevY > g.y + g.h/2 || my < g.y - g.h/2) continue;
-      if (mx < g.x1 || mx > g.x2) continue;
-
-      // Passed through gate!
-      g.flashTimer = 15;
-      g.passed = false; // gates don't permanently close, can be passed by multiple mobs
-
-      applyGateBonus(g, mx, my);
-      break;
-    }
-  }
-}
-
-const pendingSpawns = [];
-
-function applyGateBonus(g, x, y) {
-  if (g.type === 'add') {
-    const delta = g.val;
-    if (delta < 0) {
-      const kill = Math.min(mobCount, -delta);
-      mobCount = Math.max(0, mobCount - kill);
+    if(g.val<1){
+      const kn=Math.floor(nG*(1-g.val));
+      let k=kn;
+      for(let i=0;i<POOL&&k>0;i++){const b=i*SZ;if(M[b+4]&&M[b+5]===0){kill(i);k--;}}
     } else {
-      // Schedule staggered spawns
-      for (let k = 0; k < delta; k++) {
-        pendingSpawns.push({ delay: k * 3, x: x + (Math.random()-0.5)*20, y,
-          vx: (Math.random()-0.5)*1.5, vy: -MOB_SPEED * (0.8 + Math.random()*0.4), team: 0 });
-      }
-      mobCount += delta;
-    }
-  } else if (g.type === 'mul') {
-    if (g.val < 1) {
-      // divide
-      const alive = countGreenMobs();
-      const toKill = alive - Math.floor(alive * g.val);
-      let killed = 0;
-      for (let i = 0; i < MOB_POOL && killed < toKill; i++) {
-        const o = i * STRIDE;
-        if (mobBuf[o+4] === 1 && mobBuf[o+5] === 0) { killMob(i); killed++; }
-      }
-      mobCount = Math.max(0, mobCount - toKill);
-    } else {
-      // multiply: spawn (val-1) copies near gate
-      const alive = countGreenMobs();
-      const extras = Math.min(alive * (g.val - 1), 300);
-      for (let k = 0; k < extras; k++) {
-        pendingSpawns.push({ delay: (k % 30) * 2, x: x + (Math.random()-0.5)*30, y: y + (Math.random()-0.5)*10,
-          vx: (Math.random()-0.5)*2, vy: -MOB_SPEED * (0.7 + Math.random()*0.5), team: 0 });
-      }
-      mobCount = Math.max(0, mobCount + extras);
+      const extras=Math.min(Math.floor(nG*(g.val-1)),280);
+      hand+=extras; pend+=extras;
+      for(let k=0;k<extras;k++)
+        queued.push({d:(k%60)*2, x:mx+(Math.random()-.5)*32, y:my+(Math.random()-.5)*10,
+          vx:(Math.random()-.5)*2, vy:-(GSPD*(.7+Math.random()*.6)), t:0});
     }
   }
 }
 
-// ─── Enemy fire ───────────────────────────────────────────────────────────────
-function enemyFire() {
-  const burst = 2 + level;
-  for (const tank of tanks) {
-    if (tank.hp <= 0) continue;
-    for (let b = 0; b < burst; b++) {
-      const sx = tank.x + (Math.random()-0.5) * tank.width;
-      const sy = tank.y + tank.height/2 + 5;
-      spawnMob(sx, sy, (Math.random()-0.5)*1.5, ENEMY_SPEED * (0.9 + Math.random()*0.3), 1);
-    }
+// ── Enemy fire ────────────────────────────────────────────────────────────────
+function enemyFire(){
+  const n=2+Math.min(level,7);
+  for(const t of tanks){
+    if(t.hp<=0)continue;
+    for(let k=0;k<n;k++)
+      alloc(t.x+(Math.random()-.5)*t.w*.85, t.y+t.h/2+5,
+            (Math.random()-.5)*1.3, RSPD*(.9+Math.random()*.3), 1);
   }
 }
 
-// ─── Collision (green vs red) ─────────────────────────────────────────────────
-function resolveCollisions() {
-  buildHash();
-  const toKill = new Set();
+// ── Update ────────────────────────────────────────────────────────────────────
+function update(){
+  if(gst!=='play'){if(--gstCD<=0){if(gst==='win'){level++;initLevel();}else{level=1;initLevel();}}return;}
 
-  for (let i = 0; i < MOB_POOL; i++) {
-    const oi = i * STRIDE;
-    if (mobBuf[oi+4] === 0 || toKill.has(i)) continue;
+  // Aim angle from pointer
+  const norm=Math.max(-1,Math.min(1,(ptrX-W/2)/(W*0.38)));
+  const target=-Math.PI/2+norm*Math.PI*0.38;
+  aimAngle+=(target-aimAngle)*0.22;
 
-    const xi = mobBuf[oi+0], yi = mobBuf[oi+1], ti = mobBuf[oi+5];
-    const neighbors = getNeighbors(xi, yi);
+  // Fire
+  if(holding&&hand>0){
+    if(--fireT<=0){
+      hand--;
+      const bx=W/2+Math.cos(aimAngle)*30, by=cannonY()+Math.sin(aimAngle)*30;
+      alloc(bx,by,Math.cos(aimAngle)*GSPD*1.35,Math.sin(aimAngle)*GSPD*1.35,0);
+      fireT=FIRE_INT;
+    }
+  }
 
-    for (const j of neighbors) {
-      if (j === i) continue;
-      const oj = j * STRIDE;
-      if (mobBuf[oj+4] === 0 || toKill.has(j)) continue;
-      const tj = mobBuf[oj+5];
-      if (ti === tj) continue; // same team
+  // Queued gate spawns
+  for(let i=queued.length-1;i>=0;i--){
+    const q=queued[i];
+    if(--q.d<=0){alloc(q.x,q.y,q.vx,q.vy,q.t);pend=Math.max(0,pend-1);queued.splice(i,1);}
+  }
 
-      const dx = xi - mobBuf[oj+0];
-      const dy = yi - mobBuf[oj+1];
-      const dist2 = dx*dx + dy*dy;
-      if (dist2 < (MOB_R*2.2)*(MOB_R*2.2)) {
-        // Collision: both die
-        const px = (xi + mobBuf[oj+0]) / 2;
-        const py = (yi + mobBuf[oj+1]) / 2;
-        spawnParticles(px, py, ti === 0 ? '#2ecc71' : '#e74c3c');
-        toKill.add(i); toKill.add(j);
-        if (ti === 0) mobCount = Math.max(0, mobCount - 1);
+  // Move + animate
+  for(let i=0;i<POOL;i++){
+    const b=i*SZ;if(!M[b+4])continue;
+    M[b]+=M[b+2];M[b+1]+=M[b+3];
+    if(++M[b+7]>=7){M[b+7]=0;M[b+6]=(M[b+6]+1)%4;}
+    const spd=Math.hypot(M[b+2],M[b+3]);
+    const cap=M[b+5]===0?GSPD*2.4:RSPD*2.4;
+    if(spd>cap){M[b+2]*=cap/spd;M[b+3]*=cap/spd;}
+    if(M[b]<-30||M[b]>W+30||M[b+1]<-90||M[b+1]>H+40)kill(i);
+  }
+
+  buildGrid();
+
+  // Separation (same team only)
+  for(let i=0;i<POOL;i++){
+    const b=i*SZ;if(!M[b+4])continue;
+    let sx=0,sy=0;
+    for(const j of near(M[b],M[b+1])){
+      if(j===i)continue;const bj=j*SZ;
+      if(!M[bj+4]||M[bj+5]!==M[b+5])continue;
+      const dx=M[b]-M[bj],dy=M[b+1]-M[bj+1],d2=dx*dx+dy*dy;
+      if(d2<(MR*2.6)*(MR*2.6)&&d2>0.01){const d=Math.sqrt(d2);sx+=dx/d;sy+=dy/d;}
+    }
+    M[b+2]+=sx*.05;M[b+3]+=sy*.05;
+  }
+
+  // Gate check (green, moving upward)
+  for(let i=0;i<POOL;i++){
+    const b=i*SZ;if(!M[b+4]||M[b+5]!==0||M[b+3]>=0)continue;
+    const mx=M[b],my=M[b+1];
+    for(const g of gates){
+      if(my>g.y+g.h/2+2||my<g.y-g.h/2-2)continue;
+      if(mx<g.x1||mx>g.x2)continue;
+      applyGate(g,i,mx,my);break;
+    }
+  }
+
+  // Combat: green vs red (both die)
+  buildGrid();
+  const dead=new Set();
+  for(let i=0;i<POOL;i++){
+    const b=i*SZ;if(!M[b+4]||dead.has(i))continue;
+    const ti=M[b+5];
+    for(const j of near(M[b],M[b+1])){
+      if(j===i||dead.has(j))continue;
+      const bj=j*SZ;if(!M[bj+4]||M[bj+5]===ti)continue;
+      const dx=M[b]-M[bj],dy=M[b+1]-M[bj+1];
+      if(dx*dx+dy*dy<(MR*2.1)*(MR*2.1)){
+        burst((M[b]+M[bj])/2,(M[b+1]+M[bj+1])/2,ti===0?'#2ecc71':'#e74c3c',6);
+        dead.add(i);dead.add(j);break;
+      }
+    }
+  }
+  for(const idx of dead)kill(idx);
+
+  // Green hits tank
+  for(let i=0;i<POOL;i++){
+    const b=i*SZ;if(!M[b+4]||M[b+5]!==0)continue;
+    for(const t of tanks){
+      if(t.hp<=0)continue;
+      if(M[b]>t.x-t.w/2&&M[b]<t.x+t.w/2&&M[b+1]>t.y-t.h-6&&M[b+1]<t.y+t.h/2+8){
+        t.hp--;t.fl=12;kill(i);
+        shake(t.hp>0?4:12);
+        floater(t.x+(Math.random()-.5)*18,t.y-t.h-12,'-1','#ff6b6b');
+        if(t.hp<=0)burst(t.x,t.y,'#ff4040',14);
         break;
       }
     }
   }
 
-  for (const idx of toKill) killMob(idx);
-}
+  // Ticks
+  for(const t of tanks)if(t.fl>0)t.fl--;
+  for(const g of gates)if(g.fl>0)g.fl--;
+  if(--enemyT<=0){enemyFire();enemyT=ENEMY_INT;}
+  tickPS();tickFL2();
+  if(shN>0)shN--;
 
-// ─── Reynolds separation ──────────────────────────────────────────────────────
-function applySeparation() {
-  buildHash();
-  for (let i = 0; i < MOB_POOL; i++) {
-    const oi = i * STRIDE;
-    if (mobBuf[oi+4] === 0) continue;
-    const xi = mobBuf[oi+0], yi = mobBuf[oi+1], ti = mobBuf[oi+5];
-    const neighbors = getNeighbors(xi, yi);
-    let sepX = 0, sepY = 0;
+  if(tanks.every(t=>t.hp<=0)){gst='win';gstCD=140;}
 
-    for (const j of neighbors) {
-      if (j === i) continue;
-      const oj = j * STRIDE;
-      if (mobBuf[oj+4] === 0 || mobBuf[oj+5] !== ti) continue;
-      const dx = xi - mobBuf[oj+0];
-      const dy = yi - mobBuf[oj+1];
-      const d2 = dx*dx + dy*dy;
-      if (d2 < (MOB_R*2.5)*(MOB_R*2.5) && d2 > 0.01) {
-        const d = Math.sqrt(d2);
-        sepX += dx/d; sepY += dy/d;
-      }
-    }
-    mobBuf[oi+2] += sepX * 0.04;
-    mobBuf[oi+3] += sepY * 0.04;
+  // Lose: any red mob crosses cannon line
+  const cy=cannonY();
+  for(let i=0;i<POOL;i++){
+    const b=i*SZ;if(!M[b+4]||M[b+5]!==1)continue;
+    if(M[b+1]>cy+18){gst='lose';gstCD=140;return;}
   }
 }
 
-// ─── Tank hit check ────────────────────────────────────────────────────────────
-function checkTankHits() {
-  for (let i = 0; i < MOB_POOL; i++) {
-    const o = i * STRIDE;
-    if (mobBuf[o+4] === 0 || mobBuf[o+5] !== 0) continue; // only green
-    const mx = mobBuf[o+0], my = mobBuf[o+1];
-
-    for (const tank of tanks) {
-      if (tank.hp <= 0) continue;
-      if (mx > tank.x - tank.width/2 && mx < tank.x + tank.width/2 &&
-          my > tank.y - tank.height && my < tank.y + tank.height/2) {
-        tank.hp--;
-        tank.flashTimer = 10;
-        killMob(i);
-        mobCount = Math.max(0, mobCount - 1);
-        triggerShake(3);
-        spawnFloater(tank.x + (Math.random()-0.5)*20, tank.y - tank.height - 5, '-1', '#ff6b6b');
-        if (tank.hp <= 0) {
-          spawnParticles(tank.x, tank.y, '#e74c3c');
-          triggerShake(8);
-        }
-        break;
-      }
-    }
-  }
+// ── Draw ──────────────────────────────────────────────────────────────────────
+function drawRoad(){
+  const lt=laneTopY(),lb=laneBotY();
+  const tl=laneEdge(0),bl=laneEdge(1);
+  X.beginPath();X.moveTo(tl.l,lt);X.lineTo(tl.r,lt);X.lineTo(bl.r,lb);X.lineTo(bl.l,lb);X.closePath();
+  const g=X.createLinearGradient(W/2,lt,W/2,lb);
+  g.addColorStop(0,'#2c3e50');g.addColorStop(1,'#3d5166');
+  X.fillStyle=g;X.fill();
+  // dashes
+  X.save();X.setLineDash([10,16]);X.strokeStyle='rgba(255,255,255,0.1)';X.lineWidth=2;
+  X.beginPath();X.moveTo(W/2,lt);X.lineTo(W/2,lb);X.stroke();
+  X.setLineDash([]);X.restore();
+  // edges
+  X.strokeStyle='#e67e22';X.lineWidth=3;
+  X.beginPath();X.moveTo(tl.l,lt);X.lineTo(bl.l,lb);X.stroke();
+  X.beginPath();X.moveTo(tl.r,lt);X.lineTo(bl.r,lb);X.stroke();
 }
 
-// ─── Lose condition ────────────────────────────────────────────────────────────
-function checkLose() {
-  for (let i = 0; i < MOB_POOL; i++) {
-    const o = i * STRIDE;
-    if (mobBuf[o+4] === 0 || mobBuf[o+5] !== 1) continue; // only red
-    if (mobBuf[o+1] > H - CANNON_Y_OFFSET + MOB_R) {
-      return true;
-    }
+function drawGates(){
+  X.textBaseline='middle';
+  for(const g of gates){
+    X.save();
+    if(g.fl>0){X.shadowColor='#fff';X.shadowBlur=18;}
+    const w=g.x2-g.x1;
+    X.beginPath();X.roundRect(g.x1,g.y-g.h/2,w,g.h,7);
+    const gr=X.createLinearGradient(g.x1,0,g.x2,0);
+    gr.addColorStop(0,g.color+'99');gr.addColorStop(0.5,g.color);gr.addColorStop(1,g.color+'99');
+    X.fillStyle=gr;X.fill();
+    X.fillStyle='#fff';X.font='bold 14px Arial';X.textAlign='center';
+    X.fillText(g.label,g.x1+w/2,g.y);
+    X.restore();
   }
-  return false;
+  X.textBaseline='alphabetic';
 }
 
-// ─── Update ────────────────────────────────────────────────────────────────────
-let lastTime = 0;
-
-function update() {
-  if (levelState === 'transition') {
-    transTimer--;
-    if (transTimer <= 0) {
-      level++;
-      setupLevel();
-    }
-    return;
-  }
-  if (levelState === 'win' || levelState === 'lose') {
-    transTimer--;
-    if (transTimer <= 0) {
-      if (levelState === 'win') { levelState = 'transition'; transTimer = 60; }
-      else { level = 1; setupLevel(); }
-    }
-    return;
-  }
-
-  // Aim cannon toward mouse
-  cannonX += (aimX - cannonX) * 0.12;
-  const dx = aimX - cannonX;
-  const targetAngle = Math.atan2(-1, dx * 0.01) - Math.PI/2;
-  cannonAngle += (Math.atan2(Math.sin(targetAngle - cannonAngle), Math.cos(targetAngle - cannonAngle))) * 0.18;
-  // Clamp angle so cannon mostly points upward
-  cannonAngle = Math.max(-Math.PI * 0.92, Math.min(-Math.PI * 0.08, cannonAngle));
-
-  // Shoot
-  if (shooting) {
-    shootTimer--;
-    if (shootTimer <= 0) {
-      shootMob();
-      shootTimer = SHOOT_INTERVAL;
-    }
-  }
-
-  // Pending spawns
-  for (let i = pendingSpawns.length - 1; i >= 0; i--) {
-    const ps = pendingSpawns[i];
-    ps.delay--;
-    if (ps.delay <= 0) {
-      spawnMob(ps.x, ps.y, ps.vx, ps.vy, ps.team);
-      pendingSpawns.splice(i, 1);
-    }
-  }
-
-  // Move mobs
-  for (let i = 0; i < MOB_POOL; i++) {
-    const o = i * STRIDE;
-    if (mobBuf[o+4] === 0) continue;
-
-    // Save trail
-    mobBuf[o+8] = mobBuf[o+0];
-    mobBuf[o+9] = mobBuf[o+1];
-
-    mobBuf[o+0] += mobBuf[o+2];
-    mobBuf[o+1] += mobBuf[o+3];
-
-    // Animate
-    mobBuf[o+7]++;
-    if (mobBuf[o+7] > 6) { mobBuf[o+7] = 0; mobBuf[o+6] = (mobBuf[o+6] + 1) % 4; }
-
-    // Clamp speed
-    const spd = Math.sqrt(mobBuf[o+2]*mobBuf[o+2] + mobBuf[o+3]*mobBuf[o+3]);
-    const maxSpd = mobBuf[o+5] === 0 ? MOB_SPEED * 2 : ENEMY_SPEED * 2;
-    if (spd > maxSpd) { mobBuf[o+2] *= maxSpd/spd; mobBuf[o+3] *= maxSpd/spd; }
-
-    // Kill if out of bounds
-    const x = mobBuf[o+0], y = mobBuf[o+1];
-    if (x < -20 || x > W+20 || y < -50 || y > H+20) killMob(i);
-  }
-
-  // Separation
-  applySeparation();
-
-  // Gate checks
-  checkGates();
-
-  // Collisions
-  resolveCollisions();
-
-  // Tank hits
-  checkTankHits();
-
-  // Enemy fire
-  enemyFireTimer--;
-  if (enemyFireTimer <= 0) {
-    enemyFire();
-    enemyFireTimer = ENEMY_FIRE_INTERVAL;
-  }
-
-  // Tank flash
-  for (const tank of tanks) {
-    if (tank.flashTimer > 0) tank.flashTimer--;
-  }
-
-  // Gate flash
-  for (const g of gates) {
-    if (g.flashTimer > 0) g.flashTimer--;
-  }
-
-  // Particles & floaters
-  updateParticles();
-  updateFloaters();
-
-  // Screen shake
-  if (shakeTimer > 0) shakeTimer--;
-
-  // Win check
-  const allDead = tanks.every(t => t.hp <= 0);
-  if (allDead) { levelState = 'win'; transTimer = 120; }
-
-  // Lose check
-  if (checkLose()) { levelState = 'lose'; transTimer = 120; }
-
-  // Mob count sync
-  mobCount = Math.max(mobCount, 0);
+function drawMob(x,y,frame,team){
+  const r=MR, bc=team===0?'#2ecc71':'#e74c3c', hc=team===0?'#f0c070':'#f5c0a0';
+  const lo=[0,3.5,0,-3.5][frame%4];
+  X.fillStyle=bc;
+  X.beginPath();X.ellipse(x-2.5,y+r+2+lo,2,4.5,0.15,0,Math.PI*2);X.fill();
+  X.beginPath();X.ellipse(x+2.5,y+r+2-lo,2,4.5,-0.15,0,Math.PI*2);X.fill();
+  X.beginPath();X.arc(x,y,r,0,Math.PI*2);X.fill();
+  X.fillStyle=hc;X.beginPath();X.arc(x,y-r*.88,r*.55,0,Math.PI*2);X.fill();
+  X.fillStyle='#333';
+  X.beginPath();X.arc(x-1.7,y-r*.93,1.1,0,Math.PI*2);X.fill();
+  X.beginPath();X.arc(x+1.7,y-r*.93,1.1,0,Math.PI*2);X.fill();
 }
 
-// ─── Draw helpers ──────────────────────────────────────────────────────────────
-function drawRoad() {
-  const laneTop    = H * 0.14;
-  const laneBottom = H * 0.78;
-  const topL  = getLaneX(0);
-  const botL  = getLaneX(1);
-
-  // Road fill
-  ctx.beginPath();
-  ctx.moveTo(topL.left, laneTop);
-  ctx.lineTo(topL.right, laneTop);
-  ctx.lineTo(botL.right, laneBottom);
-  ctx.lineTo(botL.left, laneBottom);
-  ctx.closePath();
-  const grad = ctx.createLinearGradient(W/2, laneTop, W/2, laneBottom);
-  grad.addColorStop(0, '#2c3e50');
-  grad.addColorStop(1, '#34495e');
-  ctx.fillStyle = grad;
-  ctx.fill();
-
-  // Road lines (dashes)
-  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-  ctx.lineWidth = 2;
-  ctx.setLineDash([15, 20]);
-  ctx.beginPath();
-  ctx.moveTo(W/2, laneTop);
-  ctx.lineTo(W/2, laneBottom);
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  // Side lines
-  ctx.strokeStyle = '#f39c12';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(topL.left, laneTop); ctx.lineTo(botL.left, laneBottom);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(topL.right, laneTop); ctx.lineTo(botL.right, laneBottom);
-  ctx.stroke();
+function drawMobs(){
+  for(let i=0;i<POOL;i++){const b=i*SZ;if(!M[b+4])continue;drawMob(M[b],M[b+1],M[b+6],M[b+5]);}
 }
 
-function drawGates() {
-  for (const g of gates) {
-    const w = g.x2 - g.x1;
-    const h = g.h;
-    const alpha = g.flashTimer > 0 ? 1 : 0.85;
-    ctx.globalAlpha = alpha;
-
-    // Gate body
-    const r = 8;
-    ctx.beginPath();
-    ctx.roundRect(g.x1, g.y - h/2, w, h, r);
-    const grd = ctx.createLinearGradient(g.x1, 0, g.x2, 0);
-    grd.addColorStop(0, g.color + 'cc');
-    grd.addColorStop(0.5, g.color);
-    grd.addColorStop(1, g.color + 'cc');
-    ctx.fillStyle = grd;
-    ctx.fill();
-
-    if (g.flashTimer > 0) {
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 3;
-      ctx.stroke();
-    }
-
-    // Label
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 16px Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(g.label, g.x1 + w/2, g.y);
-    ctx.globalAlpha = 1;
-  }
-  ctx.textBaseline = 'alphabetic';
-}
-
-function drawMob(x, y, frame, team, speed) {
-  const r  = MOB_R;
-  const hr = r * 0.55;
-
-  const bodyColor = team === 0 ? '#2ecc71' : '#e74c3c';
-  const headColor = team === 0 ? '#27ae60' : '#c0392b';
-  const skinColor = team === 0 ? '#f0c070' : '#f0c070';
-
-  // Motion trail
-  if (speed > MOB_SPEED * 1.1) {
-    ctx.globalAlpha = 0.18;
-    ctx.fillStyle = bodyColor;
-    ctx.beginPath(); ctx.arc(x - (team===0?0:0), y + (team===0?2:-2), r * 0.7, 0, Math.PI*2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-  }
-
-  // Legs
-  const legAnim = [0, 3, 0, -3];
-  const legSwing = legAnim[frame % 4];
-  ctx.fillStyle = bodyColor;
-  ctx.beginPath();
-  ctx.ellipse(x - 3, y + r + 3 + legSwing, 2, 5, 0.2, 0, Math.PI*2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(x + 3, y + r + 3 - legSwing, 2, 5, -0.2, 0, Math.PI*2);
-  ctx.fill();
-
-  // Body
-  ctx.fillStyle = bodyColor;
-  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill();
-
-  // Head
-  ctx.fillStyle = skinColor;
-  ctx.beginPath(); ctx.arc(x, y - r * 0.9, hr, 0, Math.PI*2); ctx.fill();
-
-  // Eyes
-  ctx.fillStyle = '#fff';
-  const eyeDir = team === 0 ? -1 : 1;
-  ctx.beginPath(); ctx.arc(x - 2, y - r * 0.9 - 1, 2, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(x + 2, y - r * 0.9 - 1, 2, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = '#222';
-  ctx.beginPath(); ctx.arc(x - 2 + eyeDir*0.5, y - r * 0.9 - 1, 1, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(x + 2 + eyeDir*0.5, y - r * 0.9 - 1, 1, 0, Math.PI*2); ctx.fill();
-}
-
-function drawMobs() {
-  for (let i = 0; i < MOB_POOL; i++) {
-    const o = i * STRIDE;
-    if (mobBuf[o+4] === 0) continue;
-    const x     = mobBuf[o+0];
-    const y     = mobBuf[o+1];
-    const vx    = mobBuf[o+2];
-    const vy    = mobBuf[o+3];
-    const team  = mobBuf[o+5];
-    const frame = mobBuf[o+6];
-    const spd   = Math.sqrt(vx*vx + vy*vy);
-    drawMob(x, y, frame, team, spd);
-  }
-}
-
-function drawTanks() {
-  for (const tank of tanks) {
-    if (tank.hp <= 0) continue;
-    const { x, y, width: tw, height: th } = tank;
-    const flash = tank.flashTimer > 0;
-
-    // Tank body
-    ctx.save();
-    if (flash) { ctx.filter = 'brightness(2)'; }
-
-    // Treads
-    ctx.fillStyle = '#555';
-    ctx.beginPath();
-    ctx.roundRect(x - tw/2 - 4, y - 5, tw + 8, 14, 5);
-    ctx.fill();
-
-    // Hull
-    ctx.fillStyle = flash ? '#ff6060' : '#e74c3c';
-    ctx.fillRect(x - tw/2, y - th, tw, th);
-
-    // Turret
-    ctx.fillStyle = flash ? '#ff8080' : '#c0392b';
-    ctx.beginPath();
-    ctx.ellipse(x, y - th - 6, tw/3, 10, 0, 0, Math.PI*2);
-    ctx.fill();
-
-    // Barrel (pointing down)
-    ctx.fillStyle = '#888';
-    ctx.fillRect(x - 4, y - th - 4, 8, th * 0.6);
-
-    // Star emblem
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 12px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText('★', x, y - th/2 + 5);
-
-    ctx.restore();
-
+function drawTanks(){
+  for(const t of tanks){
+    if(t.hp<=0)continue;
+    X.save();if(t.fl>0)X.filter='brightness(2.5)';
+    // treads
+    X.fillStyle='#555';X.beginPath();X.roundRect(t.x-t.w/2-4,t.y-7,t.w+8,13,4);X.fill();
+    // hull
+    X.fillStyle=t.fl>0?'#ff3030':'#c0392b';X.fillRect(t.x-t.w/2,t.y-t.h,t.w,t.h);
+    // turret
+    X.fillStyle=t.fl>0?'#ff5050':'#e74c3c';
+    X.beginPath();X.ellipse(t.x,t.y-t.h-3,t.w*.30,9,0,0,Math.PI*2);X.fill();
+    // barrel pointing down
+    X.fillStyle='#888';X.beginPath();X.roundRect(t.x-4,t.y-t.h-1,8,t.h*.58,2);X.fill();
+    X.fillStyle='#fff';X.font='bold 10px Arial';X.textAlign='center';X.fillText('★',t.x,t.y-t.h/2+5);
+    X.restore();
     // HP bar
-    const barW = tw + 16;
-    const barH = 8;
-    const barX = x - barW/2;
-    const barY = y - th - 24;
-    ctx.fillStyle = '#333';
-    ctx.fillRect(barX, barY, barW, barH);
-    const pct = tank.hp / tank.maxHp;
-    const barColor = pct > 0.6 ? '#2ecc71' : pct > 0.3 ? '#f39c12' : '#e74c3c';
-    ctx.fillStyle = barColor;
-    ctx.fillRect(barX, barY, barW * pct, barH);
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(barX, barY, barW, barH);
-
-    // HP text
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 10px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText(`${tank.hp}/${tank.maxHp}`, x, barY - 2);
+    const bw=t.w+18,bh=8,bx=t.x-bw/2,by=t.y-t.h-22;
+    X.fillStyle='#333';X.fillRect(bx,by,bw,bh);
+    const pct=t.hp/t.max;
+    X.fillStyle=pct>.6?'#2ecc71':pct>.3?'#f39c12':'#e74c3c';X.fillRect(bx,by,bw*pct,bh);
+    X.strokeStyle='#aaa';X.lineWidth=1;X.strokeRect(bx,by,bw,bh);
+    X.fillStyle='#fff';X.font='bold 9px Arial';X.textAlign='center';X.fillText(`${t.hp}/${t.max}`,t.x,by-1);
   }
 }
 
-function drawCannon() {
-  const cx = cannonX;
-  const cy = H - CANNON_Y_OFFSET;
-
-  ctx.save();
-  ctx.translate(cx, cy);
-
-  // Wheels
-  ctx.fillStyle = '#555';
-  [-18, 18].forEach(ox => {
-    ctx.beginPath();
-    ctx.arc(ox, 14, 10, 0, Math.PI*2);
-    ctx.fill();
-    ctx.fillStyle = '#888';
-    ctx.beginPath();
-    ctx.arc(ox, 14, 5, 0, Math.PI*2);
-    ctx.fill();
-    ctx.fillStyle = '#555';
+function drawCannon(){
+  const cy=cannonY();
+  X.save();X.translate(W/2,cy);
+  [-18,18].forEach(ox=>{
+    X.fillStyle='#444';X.beginPath();X.arc(ox,14,10,0,Math.PI*2);X.fill();
+    X.fillStyle='#777';X.beginPath();X.arc(ox,14,5,0,Math.PI*2);X.fill();
   });
-
-  // Carriage
-  ctx.fillStyle = '#2980b9';
-  ctx.beginPath();
-  ctx.roundRect(-26, 0, 52, 18, 4);
-  ctx.fill();
-
-  // Barrel
-  ctx.save();
-  ctx.rotate(cannonAngle + Math.PI/2); // +90 because 0 = right
-  ctx.fillStyle = '#1a6fa8';
-  ctx.beginPath();
-  ctx.roundRect(-6, -34, 12, 36, 4);
-  ctx.fill();
-  ctx.fillStyle = '#1565c0';
-  ctx.beginPath();
-  ctx.roundRect(-7, -36, 14, 8, 3);
-  ctx.fill();
-  ctx.restore();
-
-  // Blue base circle
-  ctx.fillStyle = '#3498db';
-  ctx.beginPath();
-  ctx.arc(0, 0, 14, 0, Math.PI*2);
-  ctx.fill();
-
-  ctx.restore();
+  X.fillStyle='#2980b9';X.beginPath();X.roundRect(-26,0,52,18,4);X.fill();
+  X.save();
+  X.rotate(aimAngle+Math.PI/2);
+  X.fillStyle='#1a6fa8';X.beginPath();X.roundRect(-6,-36,12,38,4);X.fill();
+  X.fillStyle='#1565c0';X.beginPath();X.roundRect(-7,-38,14,9,3);X.fill();
+  X.restore();
+  X.fillStyle='#3498db';X.beginPath();X.arc(0,0,14,0,Math.PI*2);X.fill();
+  X.restore();
 }
 
-function drawHUD() {
-  // Mob counter
-  const total = mobCount + countGreenMobs();
-  ctx.fillStyle = '#fff';
-  ctx.font = 'bold 48px Arial';
-  ctx.textAlign = 'center';
-  ctx.strokeStyle = '#000';
-  ctx.lineWidth = 4;
-  ctx.strokeText(total, W/2, H - CANNON_Y_OFFSET - 30);
-  ctx.fillText(total, W/2, H - CANNON_Y_OFFSET - 30);
-
-  // Level
-  ctx.font = 'bold 18px Arial';
-  ctx.textAlign = 'left';
-  ctx.fillStyle = '#fff';
-  ctx.fillText(`Level ${level}`, 12, 28);
-
-  // Aim crosshair
-  if (shooting) {
-    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([4, 4]);
-    const cx2 = cannonX + Math.cos(cannonAngle) * 15;
-    const cy2 = (H - CANNON_Y_OFFSET) + Math.sin(cannonAngle) * 15;
-    ctx.beginPath();
-    ctx.moveTo(cx2, cy2);
-    ctx.lineTo(cx2 + Math.cos(cannonAngle) * 200, cy2 + Math.sin(cannonAngle) * 200);
-    ctx.stroke();
-    ctx.setLineDash([]);
+function drawHUD(){
+  const total=hand+nG+pend;
+  X.font='bold 52px Arial';X.textAlign='center';
+  X.strokeStyle='#000';X.lineWidth=5;X.strokeText(total,W/2,cannonY()-36);
+  X.fillStyle='#fff';X.fillText(total,W/2,cannonY()-36);
+  X.font='bold 17px Arial';X.textAlign='left';
+  X.strokeStyle='#000';X.lineWidth=3;X.strokeText('Level '+level,12,26);
+  X.fillStyle='#fff';X.fillText('Level '+level,12,26);
+  if(holding){
+    X.save();X.setLineDash([5,9]);X.strokeStyle='rgba(255,255,255,.32)';X.lineWidth=1.5;
+    const bx=W/2+Math.cos(aimAngle)*18,by=cannonY()+Math.sin(aimAngle)*18;
+    X.beginPath();X.moveTo(bx,by);X.lineTo(bx+Math.cos(aimAngle)*190,by+Math.sin(aimAngle)*190);
+    X.stroke();X.setLineDash([]);X.restore();
   }
 }
 
-function drawOverlay() {
-  if (levelState === 'win') {
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    ctx.fillRect(0,0,W,H);
-    ctx.font = 'bold 52px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#f1c40f';
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 5;
-    ctx.strokeText('VICTORY!', W/2, H/2 - 20);
-    ctx.fillText('VICTORY!', W/2, H/2 - 20);
-    ctx.font = 'bold 22px Arial';
-    ctx.fillStyle = '#fff';
-    ctx.fillText(`Level ${level} Complete!`, W/2, H/2 + 24);
-  } else if (levelState === 'lose') {
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.fillRect(0,0,W,H);
-    ctx.font = 'bold 52px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#e74c3c';
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 5;
-    ctx.strokeText('DEFEAT!', W/2, H/2 - 20);
-    ctx.fillText('DEFEAT!', W/2, H/2 - 20);
-    ctx.font = 'bold 20px Arial';
-    ctx.fillStyle = '#fff';
-    ctx.fillText('Restarting...', W/2, H/2 + 24);
+function drawOverlay(){
+  if(gst==='win'){
+    X.fillStyle='rgba(0,0,0,.5)';X.fillRect(0,0,W,H);
+    X.font='bold 56px Arial';X.textAlign='center';
+    X.strokeStyle='#000';X.lineWidth=6;X.strokeText('VICTORY!',W/2,H/2-10);
+    X.fillStyle='#f1c40f';X.fillText('VICTORY!',W/2,H/2-10);
+    X.font='bold 22px Arial';X.fillStyle='#fff';X.fillText('Level '+level+' clear!',W/2,H/2+28);
+  } else if(gst==='lose'){
+    X.fillStyle='rgba(0,0,0,.6)';X.fillRect(0,0,W,H);
+    X.font='bold 56px Arial';X.textAlign='center';
+    X.strokeStyle='#000';X.lineWidth=6;X.strokeText('DEFEAT!',W/2,H/2-10);
+    X.fillStyle='#e74c3c';X.fillText('DEFEAT!',W/2,H/2-10);
+    X.font='bold 20px Arial';X.fillStyle='#fff';X.fillText('Restarting...',W/2,H/2+28);
   }
 }
 
-// ─── Main draw ─────────────────────────────────────────────────────────────────
-function draw() {
-  ctx.save();
-
-  // Screen shake
-  if (shakeTimer > 0) {
-    const s = shakeMag * (shakeTimer / 12);
-    ctx.translate((Math.random()-0.5)*s, (Math.random()-0.5)*s);
-  }
-
-  // Background
-  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
-  bgGrad.addColorStop(0, '#0f2027');
-  bgGrad.addColorStop(1, '#2c3e50');
-  ctx.fillStyle = bgGrad;
-  ctx.fillRect(0, 0, W, H);
-
-  drawRoad();
-  drawGates();
-  drawMobs();
-  drawTanks();
-  drawCannon();
-  drawParticles();
-  drawFloaters();
-  drawHUD();
-  drawOverlay();
-
-  ctx.restore();
+function draw(){
+  X.save();
+  if(shN>0){const s=shM*(shN/14);X.translate((Math.random()-.5)*s,(Math.random()-.5)*s);}
+  X.fillStyle='#0f2027';X.fillRect(0,0,W,H);
+  drawRoad();drawGates();drawMobs();drawTanks();drawCannon();drawPS();drawFL2();drawHUD();drawOverlay();
+  X.restore();
 }
 
-// ─── Game loop ─────────────────────────────────────────────────────────────────
-function loop(ts) {
-  requestAnimationFrame(loop);
-  update();
-  draw();
-}
+// ── Input ─────────────────────────────────────────────────────────────────────
+function gx(e){return(e.touches?e.touches[0].clientX:e.clientX)-C.getBoundingClientRect().left;}
+C.addEventListener('mousedown', e=>{holding=true;ptrX=gx(e);fireT=0;});
+C.addEventListener('mousemove', e=>{ptrX=gx(e);});
+C.addEventListener('mouseup',   ()=>{holding=false;});
+C.addEventListener('mouseleave',()=>{holding=false;});
+C.addEventListener('touchstart',e=>{e.preventDefault();holding=true;ptrX=gx(e);fireT=0;},{passive:false});
+C.addEventListener('touchmove', e=>{e.preventDefault();ptrX=gx(e);},{passive:false});
+C.addEventListener('touchend',  e=>{e.preventDefault();holding=false;},{passive:false});
 
-// ─── Input ─────────────────────────────────────────────────────────────────────
-function getEventX(e) {
-  if (e.touches) return e.touches[0].clientX - canvas.getBoundingClientRect().left;
-  return e.clientX - canvas.getBoundingClientRect().left;
-}
-
-canvas.addEventListener('mousedown', e => { shooting = true; aimX = getEventX(e); shootTimer = 0; });
-canvas.addEventListener('mousemove', e => { aimX = getEventX(e); });
-canvas.addEventListener('mouseup',   () => { shooting = false; });
-canvas.addEventListener('mouseleave', () => { shooting = false; });
-
-canvas.addEventListener('touchstart', e => { e.preventDefault(); shooting = true; aimX = getEventX(e); shootTimer = 0; }, { passive: false });
-canvas.addEventListener('touchmove',  e => { e.preventDefault(); aimX = getEventX(e); }, { passive: false });
-canvas.addEventListener('touchend',   e => { e.preventDefault(); shooting = false; }, { passive: false });
-
-// ─── Start ─────────────────────────────────────────────────────────────────────
-setupLevel();
-requestAnimationFrame(loop);
+// ── Loop ──────────────────────────────────────────────────────────────────────
+initLevel();
+(function loop(){requestAnimationFrame(loop);update();draw();})();
 </script>
 </body>
 </html>
