@@ -80,17 +80,16 @@ function shake(m){shN=14;shM=m;}
 
 // ── Lane helpers ──────────────────────────────────────────────────────────────
 const MR=7;
-const laneTopY=()=>H*0.10, laneBotY=()=>H*0.78, cannonY=()=>H*0.87;
+const laneTopY=()=>H*0.10, laneBotY=()=>H*0.80, cannonY=()=>H*0.88;
+const LANE_L=()=>W*0.06, LANE_R=()=>W*0.94;
 
-function laneEdge(t){
-  const tw=W*0.09, bw=W*0.47, h=tw+(bw-tw)*t;
-  return{l:W/2-h, r:W/2+h};
-}
+// laneEdge kept for compat but now returns fixed width
+function laneEdge(){return{l:LANE_L(), r:LANE_R()};}
 function laneT(y){return(y-laneTopY())/(laneBotY()-laneTopY());}
 
 // ── Game state ────────────────────────────────────────────────────────────────
-let level=1, hand=0, pend=0; // hand=unfired, pend=gate spawns in flight
-let tanks=[], gates=[], queued=[];
+let level=1, hand=0, pend=0;
+let tanks=[], gates=[], obstacles=[], queued=[];
 let fireT=0, FIRE_INT=8, enemyT=0, ENEMY_INT=140;
 let holding=false, ptrX=0, aimAngle=-Math.PI/2;
 let gst='play', gstCD=0; // game state
@@ -99,7 +98,7 @@ const GSPD=3.4, RSPD=2.4;
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 function initLevel(){
-  resetPool();PS.length=0;FL2.length=0;queued.length=0;
+  resetPool();PS.length=0;FL2.length=0;queued.length=0;obstacles.length=0;
   ptrX=W/2; aimAngle=-Math.PI/2; holding=false; fireT=0;
   hand=12+level*4; pend=0;
   FIRE_INT=Math.max(4,11-Math.floor(level/2));
@@ -108,13 +107,12 @@ function initLevel(){
 
   const nT=level>=3?2:1, hp=14+level*9;
   tanks=[];
-  const ty=laneTopY()+10;
+  const ty=laneTopY()+18;
   if(nT===1){
     tanks.push({x:W/2,y:ty,hp,max:hp,fl:0,w:56,h:28});
   } else {
-    const e=laneEdge(laneT(ty));
-    tanks.push({x:e.l+(e.r-e.l)*0.28,y:ty,hp,max:hp,fl:0,w:50,h:26});
-    tanks.push({x:e.l+(e.r-e.l)*0.72,y:ty,hp,max:hp,fl:0,w:50,h:26});
+    tanks.push({x:W/2-W*0.18,y:ty,hp,max:hp,fl:0,w:50,h:26});
+    tanks.push({x:W/2+W*0.18,y:ty,hp,max:hp,fl:0,w:50,h:26});
   }
   buildGates();
   gst='play'; gstCD=0;
@@ -122,14 +120,31 @@ function initLevel(){
 
 function buildGates(){
   gates=[];
-  const rows=Math.min(5+Math.floor(level*0.7),9);
+  const rows=Math.min(5+Math.floor(level*0.6),8);
   const ltY=laneTopY(), lbY=laneBotY();
   const step=(lbY-ltY)/(rows+1);
+  const LL=LANE_L(), LR=LANE_R();
+  // Rock size in center of each gate pair
+  const rockW=46, rockH=34;
+
   for(let r=0;r<rows;r++){
     const gy=ltY+step*(r+1);
-    const e=laneEdge(laneT(gy));
-    gates.push(mkG(e.l+5, W/2-5, gy, r));
-    gates.push(mkG(W/2+5, e.r-5, gy, r));
+    // Center rock between the two gates
+    const rx=W/2-rockW/2, ry=gy-rockH/2;
+    obstacles.push({x:rx, y:ry, w:rockW, h:rockH, rx:8});
+    // Left gate: from lane left to rock left
+    gates.push(mkG(LL+6, rx-6, gy, r));
+    // Right gate: from rock right to lane right
+    gates.push(mkG(rx+rockW+6, LR-6, gy, r));
+
+    // Randomly add 1-2 extra side rocks between rows
+    if(r<rows-1 && Math.random()<0.55){
+      const side=Math.random()<0.5;
+      const ex=side ? LL+14+Math.random()*(W/2-LL-70) : W/2+30+Math.random()*(LR-W/2-60);
+      const ey=gy+step*0.45+Math.random()*step*0.1;
+      const ew=30+Math.random()*20, eh=24+Math.random()*14;
+      obstacles.push({x:ex, y:ey-eh/2, w:ew, h:eh, rx:6});
+    }
   }
 }
 
@@ -173,11 +188,12 @@ function applyGate(g,mobIdx,mx,my){
       let k=kn;
       for(let i=0;i<POOL&&k>0;i++){const b=i*SZ;if(M[b+4]&&M[b+5]===0){kill(i);k--;}}
     } else {
-      const extras=Math.min(Math.floor(nG*(g.val-1)),280);
+      // Cap extras: max 20 new mobs per gate trigger (prevents explosion/lag)
+      const extras=Math.min(Math.floor(nG*(g.val-1)),20);
       hand+=extras; pend+=extras;
       for(let k=0;k<extras;k++)
-        queued.push({d:(k%60)*2, x:mx+(Math.random()-.5)*32, y:my+(Math.random()-.5)*10,
-          vx:(Math.random()-.5)*2, vy:-(GSPD*(.7+Math.random()*.6)), t:0});
+        queued.push({d:k*4, x:mx+(Math.random()-.5)*28, y:my+(Math.random()-.5)*8,
+          vx:(Math.random()-.5)*1.5, vy:-(GSPD*(.8+Math.random()*.4)), t:0});
     }
   }
 }
@@ -198,9 +214,10 @@ function update(){
   if(gst!=='play'){if(--gstCD<=0){if(gst==='win'){level++;initLevel();}else{level=1;initLevel();}}return;}
 
   // Aim angle from pointer
-  const norm=Math.max(-1,Math.min(1,(ptrX-W/2)/(W*0.38)));
-  const target=-Math.PI/2+norm*Math.PI*0.38;
-  aimAngle+=(target-aimAngle)*0.22;
+  // norm: -1 = full left, 0 = center (up), +1 = full right
+  const norm=Math.max(-1,Math.min(1,(ptrX-W/2)/(W*0.44)));
+  const target=-Math.PI/2+norm*Math.PI*0.33;
+  aimAngle+=(target-aimAngle)*0.18;
 
   // Fire
   if(holding&&hand>0){
@@ -242,6 +259,22 @@ function update(){
       if(d2<(MR*2.6)*(MR*2.6)&&d2>0.01){const d=Math.sqrt(d2);sx+=dx/d;sy+=dy/d;}
     }
     M[b+2]+=sx*.05;M[b+3]+=sy*.05;
+  }
+
+  // Obstacle avoidance (all mobs pushed away from rocks)
+  for(let i=0;i<POOL;i++){
+    const b=i*SZ;if(!M[b+4])continue;
+    for(const o of obstacles){
+      const cx=o.x+o.w/2, cy=o.y+o.h/2;
+      const nearX=Math.max(o.x,Math.min(o.x+o.w,M[b]));
+      const nearY=Math.max(o.y,Math.min(o.y+o.h,M[b+1]));
+      const dx=M[b]-nearX, dy=M[b+1]-nearY;
+      const d2=dx*dx+dy*dy;
+      if(d2<(MR+4)*(MR+4)&&d2>0.001){
+        const d=Math.sqrt(d2);
+        M[b+2]+=dx/d*0.5;M[b+3]+=dy/d*0.5;
+      }
+    }
   }
 
   // Gate check (green, moving upward)
@@ -307,20 +340,34 @@ function update(){
 
 // ── Draw ──────────────────────────────────────────────────────────────────────
 function drawRoad(){
-  const lt=laneTopY(),lb=laneBotY();
-  const tl=laneEdge(0),bl=laneEdge(1);
-  X.beginPath();X.moveTo(tl.l,lt);X.lineTo(tl.r,lt);X.lineTo(bl.r,lb);X.lineTo(bl.l,lb);X.closePath();
+  const lt=laneTopY(), lb=laneBotY(), ll=LANE_L(), lr=LANE_R();
+  // Side zones (grass/city)
+  X.fillStyle='#1a472a'; X.fillRect(0,0,ll,H);
+  X.fillStyle='#1a472a'; X.fillRect(lr,0,W-lr,H);
+  // Road
   const g=X.createLinearGradient(W/2,lt,W/2,lb);
-  g.addColorStop(0,'#2c3e50');g.addColorStop(1,'#3d5166');
-  X.fillStyle=g;X.fill();
-  // dashes
-  X.save();X.setLineDash([10,16]);X.strokeStyle='rgba(255,255,255,0.1)';X.lineWidth=2;
-  X.beginPath();X.moveTo(W/2,lt);X.lineTo(W/2,lb);X.stroke();
+  g.addColorStop(0,'#8a7560');g.addColorStop(1,'#9e8a72');
+  X.fillStyle=g; X.fillRect(ll,0,lr-ll,H);
+  // Road border stripes
+  X.fillStyle='#c8a96a'; X.fillRect(ll,0,6,H); X.fillRect(lr-6,0,6,H);
+  // Center dashes
+  X.save();X.setLineDash([18,22]);X.strokeStyle='rgba(255,255,255,0.18)';X.lineWidth=3;
+  X.beginPath();X.moveTo(W/2,lt-20);X.lineTo(W/2,lb+20);X.stroke();
   X.setLineDash([]);X.restore();
-  // edges
-  X.strokeStyle='#e67e22';X.lineWidth=3;
-  X.beginPath();X.moveTo(tl.l,lt);X.lineTo(bl.l,lb);X.stroke();
-  X.beginPath();X.moveTo(tl.r,lt);X.lineTo(bl.r,lb);X.stroke();
+  // Obstacles (rocks/cubes)
+  for(const o of obstacles){
+    const ox=o.x,oy=o.y,ow=o.w,oh=o.h,rx=o.rx||6;
+    // Shadow
+    X.fillStyle='rgba(0,0,0,0.25)';X.beginPath();X.roundRect(ox+4,oy+5,ow,oh,rx);X.fill();
+    // Top face (lighter)
+    X.fillStyle='#8a7a65';X.beginPath();X.roundRect(ox,oy,ow,oh,rx);X.fill();
+    // Fake 3D top edge
+    X.fillStyle='#a0906d';X.beginPath();X.roundRect(ox,oy,ow,oh*0.4,rx);X.fill();
+    // Dark side
+    X.fillStyle='#6a5c4a';X.beginPath();X.roundRect(ox,oy+oh*0.6,ow,oh*0.4,rx);X.fill();
+    // Highlight
+    X.strokeStyle='#bfad90';X.lineWidth=1.5;X.beginPath();X.roundRect(ox,oy,ow,oh,rx);X.stroke();
+  }
 }
 
 function drawGates(){
