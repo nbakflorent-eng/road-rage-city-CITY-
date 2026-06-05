@@ -5,500 +5,525 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Mob Control</title>
 <style>
-*{margin:0;padding:0;box-sizing:border-box;}
-body{background:#111;display:flex;justify-content:center;align-items:center;height:100vh;overflow:hidden;}
-canvas{display:block;touch-action:none;}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#111; display:flex; justify-content:center; align-items:center;
+       height:100vh; overflow:hidden; }
+canvas { display:block; touch-action:none; }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <script>
 'use strict';
-const C = document.getElementById('c');
-const X = C.getContext('2d');
+
+// ─── Canvas ─────────────────────────────────────────────────────────────────
+const cv = document.getElementById('c');
+const cx = cv.getContext('2d');
 let W = 0, H = 0;
-function resize(){W=Math.min(window.innerWidth,430);H=window.innerHeight;C.width=W;C.height=H;}
+function resize() {
+  W = Math.min(window.innerWidth, 430);
+  H = window.innerHeight;
+  cv.width = W; cv.height = H;
+}
 resize();
-window.addEventListener('resize',resize);
+window.addEventListener('resize', resize);
 
-// ── Pool ────────────────────────────────────────────────────────────────────
-// stride: x y vx vy alive team frame ftimer
-const SZ=8, POOL=1800;
-const M=new Float32Array(POOL*SZ);
-const IDS=new Uint32Array(POOL); // unique birth IDs for gate dedup
-let idCtr=0, nG=0, nR=0;
-const FL=[];
+// ─── Layout (straight top-down rectangle, NO perspective) ───────────────────
+const LL  = () => W * 0.10;  // lane left edge
+const LR  = () => W * 0.90;  // lane right edge
+const LW  = () => LR() - LL(); // lane width
+const TY  = () => H * 0.06;  // top of lane
+const BY  = () => H * 0.80;  // bottom of lane
+const CY  = () => H * 0.88;  // cannon center y
 
-function resetPool(){M.fill(0);FL.length=0;for(let i=POOL-1;i>=0;i--)FL.push(i);nG=nR=0;}
+// ─── Mob pool (typed arrays, zero GC) ───────────────────────────────────────
+const POOL = 1400, ST = 8; // stride: x y vx vy alive team frame ftimer
+const M = new Float32Array(POOL * ST);
+const MID = new Uint32Array(POOL); // unique spawn IDs
+let uid = 0, nG = 0, nR = 0;
+const FREE = [];
 
-function alloc(x,y,vx,vy,team){
-  if(!FL.length)return -1;
-  const i=FL.pop(), b=i*SZ;
-  M[b]=x;M[b+1]=y;M[b+2]=vx;M[b+3]=vy;M[b+4]=1;M[b+5]=team;M[b+6]=0;M[b+7]=0;
-  IDS[i]=++idCtr;
-  if(team===0)nG++;else nR++;
+function poolInit() {
+  M.fill(0); FREE.length = 0;
+  for (let i = POOL-1; i >= 0; i--) FREE.push(i);
+  nG = nR = 0;
+}
+
+function spawn(x, y, vx, vy, team) {
+  if (!FREE.length) return -1;
+  const i = FREE.pop(), b = i*ST;
+  M[b]=x; M[b+1]=y; M[b+2]=vx; M[b+3]=vy;
+  M[b+4]=1; M[b+5]=team; M[b+6]=0; M[b+7]=0;
+  MID[i] = ++uid;
+  if (team===0) nG++; else nR++;
   return i;
 }
 
-function kill(i){
-  const b=i*SZ;
-  if(!M[b+4])return;
-  if(M[b+5]===0)nG--;else nR--;
-  M[b+4]=0;FL.push(i);
+function die(i) {
+  const b = i*ST;
+  if (!M[b+4]) return;
+  if (M[b+5]===0) nG--; else nR--;
+  M[b+4]=0; FREE.push(i);
 }
 
-// ── Spatial hash ─────────────────────────────────────────────────────────────
-const CSIZ=26, GRID=new Map();
-function buildGrid(){
-  GRID.clear();
-  for(let i=0;i<POOL;i++){const b=i*SZ;if(!M[b+4])continue;
-    const k=((M[b]/CSIZ)|0)*100000+((M[b+1]/CSIZ)|0);
-    let c=GRID.get(k);if(!c){c=[];GRID.set(k,c);}c.push(i);}
+// ─── Spatial hash ────────────────────────────────────────────────────────────
+const CS = 24, HASH = new Map();
+function buildHash() {
+  HASH.clear();
+  for (let i = 0; i < POOL; i++) {
+    const b = i*ST; if (!M[b+4]) continue;
+    const k = ((M[b]/CS)|0)*100000 + ((M[b+1]/CS)|0);
+    let c = HASH.get(k); if (!c) { c=[]; HASH.set(k,c); } c.push(i);
+  }
 }
-function near(x,y){
-  const out=[],cx=(x/CSIZ)|0,cy=(y/CSIZ)|0;
-  for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
-    const c=GRID.get((cx+dx)*100000+(cy+dy));if(c)for(const v of c)out.push(v);}
+function query(x, y) {
+  const out=[], cx2=(x/CS)|0, cy2=(y/CS)|0;
+  for (let dx=-1; dx<=1; dx++)
+    for (let dy=-1; dy<=1; dy++) {
+      const c = HASH.get((cx2+dx)*100000+cy2+dy);
+      if (c) for (const v of c) out.push(v);
+    }
   return out;
 }
 
-// ── Particles ─────────────────────────────────────────────────────────────────
-const PS=[];
-function burst(x,y,col,n=8){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=2+Math.random()*3.5;PS.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,l:1,col,sz:2+Math.random()*3});}}
-function tickPS(){for(let i=PS.length-1;i>=0;i--){const p=PS[i];p.x+=p.vx;p.y+=p.vy;p.vy+=0.14;p.l-=0.042;if(p.l<=0)PS.splice(i,1);}}
-function drawPS(){X.save();for(const p of PS){X.globalAlpha=p.l;X.fillStyle=p.col;X.fillRect(p.x-p.sz/2,p.y-p.sz/2,p.sz,p.sz);}X.globalAlpha=1;X.restore();}
+// ─── Particles ───────────────────────────────────────────────────────────────
+const PARTS = [];
+function burst(x, y, col, n=8) {
+  for (let i=0; i<n; i++) {
+    const a=Math.random()*Math.PI*2, s=2+Math.random()*3.5;
+    PARTS.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,l:1,col,sz:2+Math.random()*3});
+  }
+}
+function tickParts() {
+  for (let i=PARTS.length-1; i>=0; i--) {
+    const p=PARTS[i]; p.x+=p.vx; p.y+=p.vy; p.vy+=0.15; p.l-=0.04;
+    if (p.l<=0) PARTS.splice(i,1);
+  }
+}
+function drawParts() {
+  cx.save();
+  for (const p of PARTS) { cx.globalAlpha=p.l; cx.fillStyle=p.col; cx.fillRect(p.x-p.sz/2,p.y-p.sz/2,p.sz,p.sz); }
+  cx.globalAlpha=1; cx.restore();
+}
 
-// ── Floaters ──────────────────────────────────────────────────────────────────
-const FL2=[];
-function floater(x,y,t,col){FL2.push({x,y,vy:-1.8,t,col,l:1.4});}
-function tickFL2(){for(let i=FL2.length-1;i>=0;i--){const f=FL2[i];f.y+=f.vy;f.l-=0.024;if(f.l<=0)FL2.splice(i,1);}}
-function drawFL2(){X.save();X.textAlign='center';for(const f of FL2){X.globalAlpha=Math.min(1,f.l);X.font='bold 20px Arial';X.strokeStyle='#000';X.lineWidth=3;X.strokeText(f.t,f.x,f.y);X.fillStyle=f.col;X.fillText(f.t,f.x,f.y);}X.globalAlpha=1;X.restore();}
+// ─── Floating numbers ────────────────────────────────────────────────────────
+const NUMS = [];
+function addNum(x, y, t, col) { NUMS.push({x, y, vy:-1.8, t, col, l:1.4}); }
+function tickNums() { for (let i=NUMS.length-1; i>=0; i--) { const n=NUMS[i]; n.y+=n.vy; n.l-=0.024; if(n.l<=0) NUMS.splice(i,1); } }
+function drawNums() {
+  cx.save(); cx.textAlign='center';
+  for (const n of NUMS) {
+    cx.globalAlpha=Math.min(1,n.l); cx.font='bold 20px Arial';
+    cx.strokeStyle='#000'; cx.lineWidth=3; cx.strokeText(n.t,n.x,n.y);
+    cx.fillStyle=n.col; cx.fillText(n.t,n.x,n.y);
+  }
+  cx.globalAlpha=1; cx.restore();
+}
 
-// ── Shake ─────────────────────────────────────────────────────────────────────
-let shN=0,shM=0;
-function shake(m){shN=14;shM=m;}
+// ─── Screen shake ────────────────────────────────────────────────────────────
+let shT=0, shA=0;
+function shake(a) { shT=14; shA=a; }
 
-// ── Lane helpers ──────────────────────────────────────────────────────────────
-const MR=7;
-const laneTopY=()=>H*0.10, laneBotY=()=>H*0.80, cannonY=()=>H*0.88;
-const LANE_L=()=>W*0.06, LANE_R=()=>W*0.94;
-
-// laneEdge kept for compat but now returns fixed width
-function laneEdge(){return{l:LANE_L(), r:LANE_R()};}
-function laneT(y){return(y-laneTopY())/(laneBotY()-laneTopY());}
-
-// ── Game state ────────────────────────────────────────────────────────────────
+// ─── Game data ────────────────────────────────────────────────────────────────
+const G_SPD = 3.2, R_SPD = 2.4, MOB_R = 7;
 let level=1, hand=0, pend=0;
-let tanks=[], gates=[], obstacles=[], queued=[];
-let fireT=0, FIRE_INT=8, enemyT=0, ENEMY_INT=140;
-let holding=false, ptrX=0, aimAngle=-Math.PI/2;
-let gst='play', gstCD=0; // game state
+let tanks=[], gates=[], rocks=[], queue=[];
+let fireT=0, FIRE_I=7, enmT=0, ENM_I=130;
+let holding=false, ptrX=0, angle=-Math.PI/2;
+let gst='play', gstT=0;
 
-const GSPD=3.4, RSPD=2.4;
+// ─── Level setup ─────────────────────────────────────────────────────────────
+function initLevel() {
+  poolInit(); PARTS.length=0; NUMS.length=0; queue.length=0;
+  ptrX=W/2; angle=-Math.PI/2; holding=false; fireT=0;
+  hand = 12 + level*4; pend = 0;
+  FIRE_I = Math.max(4, 10 - Math.floor(level/2));
+  ENM_I  = Math.max(45, 130 - level*9);
+  enmT   = 80;
 
-// ── Init ──────────────────────────────────────────────────────────────────────
-function initLevel(){
-  resetPool();PS.length=0;FL2.length=0;queued.length=0;obstacles.length=0;
-  ptrX=W/2; aimAngle=-Math.PI/2; holding=false; fireT=0;
-  hand=12+level*4; pend=0;
-  FIRE_INT=Math.max(4,11-Math.floor(level/2));
-  ENEMY_INT=Math.max(40,140-level*10);
-  enemyT=80;
-
-  const nT=level>=3?2:1, hp=14+level*9;
-  tanks=[];
-  const ty=laneTopY()+18;
-  if(nT===1){
-    tanks.push({x:W/2,y:ty,hp,max:hp,fl:0,w:56,h:28});
+  // Tanks
+  const ty = TY()+22, hp = 14 + level*9;
+  tanks = [];
+  if (level < 3) {
+    tanks.push({x:W/2, y:ty, hp, max:hp, fl:0, w:56, h:28});
   } else {
-    tanks.push({x:W/2-W*0.18,y:ty,hp,max:hp,fl:0,w:50,h:26});
-    tanks.push({x:W/2+W*0.18,y:ty,hp,max:hp,fl:0,w:50,h:26});
+    tanks.push({x:W/2-W*0.17, y:ty, hp, max:hp, fl:0, w:50, h:26});
+    tanks.push({x:W/2+W*0.17, y:ty, hp, max:hp, fl:0, w:50, h:26});
   }
-  buildGates();
-  gst='play'; gstCD=0;
+
+  buildLayout();
+  gst='play'; gstT=0;
 }
 
-function buildGates(){
-  gates=[];
-  const rows=Math.min(5+Math.floor(level*0.6),8);
-  const ltY=laneTopY(), lbY=laneBotY();
-  const step=(lbY-ltY)/(rows+1);
-  const LL=LANE_L(), LR=LANE_R();
-  // Rock size in center of each gate pair
-  const rockW=46, rockH=34;
+// ─── Build gate rows + rocks ──────────────────────────────────────────────────
+function buildLayout() {
+  gates=[]; rocks=[];
+  const rows = Math.min(5+Math.floor(level*0.6), 8);
+  const yTop = TY()+65, yBot = BY()-20;
+  const step = (yBot-yTop)/(rows+1);
+  const ll=LL(), lr=LR(), rkW=44, rkH=32, pad=5;
 
-  for(let r=0;r<rows;r++){
-    const gy=ltY+step*(r+1);
-    // Center rock between the two gates
-    const rx=W/2-rockW/2, ry=gy-rockH/2;
-    obstacles.push({x:rx, y:ry, w:rockW, h:rockH, rx:8});
-    // Left gate: from lane left to rock left
-    gates.push(mkG(LL+6, rx-6, gy, r));
-    // Right gate: from rock right to lane right
-    gates.push(mkG(rx+rockW+6, LR-6, gy, r));
-
-    // Randomly add 1-2 extra side rocks between rows
-    if(r<rows-1 && Math.random()<0.55){
-      const side=Math.random()<0.5;
-      const ex=side ? LL+14+Math.random()*(W/2-LL-70) : W/2+30+Math.random()*(LR-W/2-60);
-      const ey=gy+step*0.45+Math.random()*step*0.1;
-      const ew=30+Math.random()*20, eh=24+Math.random()*14;
-      obstacles.push({x:ex, y:ey-eh/2, w:ew, h:eh, rx:6});
+  for (let r=0; r<rows; r++) {
+    const gy = yTop + step*(r+1);
+    // Center rock
+    rocks.push({x:W/2-rkW/2, y:gy-rkH/2, w:rkW, h:rkH});
+    // Left gate  (lane-left to rock-left)
+    gates.push(mkGate(ll+pad, W/2-rkW/2-pad, gy, r));
+    // Right gate (rock-right to lane-right)
+    gates.push(mkGate(W/2+rkW/2+pad, lr-pad, gy, r));
+    // Extra side rock randomly between rows
+    if (r < rows-1 && Math.random() < 0.5) {
+      const side = Math.random()<0.5;
+      const ew=28+Math.random()*18, eh=22+Math.random()*12;
+      const lim = (lr-ll)/2 - rkW/2 - ew - 20;
+      const ex = side ? ll+8+Math.random()*Math.max(4,lim) : W/2+rkW/2+8+Math.random()*Math.max(4,lim);
+      const ey = gy+step*0.4+Math.random()*step*0.15;
+      rocks.push({x:ex, y:ey-eh/2, w:ew, h:eh});
     }
   }
 }
 
-function mkG(x1,x2,y,row){
-  const h=28;
-  // trap 8% chance
-  if(Math.random()<0.08)
-    return{x1,x2,y,h,type:'add',val:-5,label:'-5',color:'#e74c3c',fl:0,vis:new Set()};
-  const tiers=[
-    [{type:'add',val:5,label:'+5',color:'#27ae60'},{type:'add',val:10,label:'+10',color:'#2ecc71'},{type:'mul',val:2,label:'×2',color:'#2980b9'}],
-    [{type:'add',val:10,label:'+10',color:'#2ecc71'},{type:'mul',val:2,label:'×2',color:'#2980b9'},{type:'mul',val:3,label:'×3',color:'#8e44ad'}],
-    [{type:'mul',val:3,label:'×3',color:'#8e44ad'},{type:'mul',val:5,label:'×5',color:'#e67e22'},{type:'add',val:20,label:'+20',color:'#27ae60'}],
+function gateColor(type, val) {
+  if (type==='add' && val<0) return '#c0392b';
+  if (type==='add') return '#27ae60';
+  if (val===2) return '#2980b9';
+  if (val===3) return '#8e44ad';
+  return '#e67e22';
+}
+
+function mkGate(x1, x2, y, row) {
+  if (Math.random()<0.06)
+    return {x1,x2,y,h:28,type:'add',val:-5,label:'-5',color:'#c0392b',fl:0,vis:new Set(),once:false};
+  const pools=[
+    [{type:'add',val:5,label:'+5'},{type:'add',val:10,label:'+10'},{type:'mul',val:2,label:'×2'}],
+    [{type:'add',val:10,label:'+10'},{type:'mul',val:2,label:'×2'},{type:'mul',val:3,label:'×3'}],
+    [{type:'mul',val:3,label:'×3'},{type:'mul',val:5,label:'×5'},{type:'add',val:15,label:'+15'}],
   ];
-  const tier=Math.min(2,Math.floor(level/2)+(row>=3?1:0));
-  const pool=tiers[Math.min(2,tier)];
-  return{x1,x2,y,h,...pool[(Math.random()*pool.length)|0],fl:0,vis:new Set()};
+  const tier = Math.min(2, Math.floor(level/2)+(row>=3?1:0));
+  const g = pools[Math.min(2,tier)][(Math.random()*pools[Math.min(2,tier)].length)|0];
+  return {x1,x2,y,h:28,...g,color:gateColor(g.type,g.val),fl:0,vis:new Set(),once:false};
 }
 
-// ── Gate apply ────────────────────────────────────────────────────────────────
-function applyGate(g,mobIdx,mx,my){
-  const uid=IDS[mobIdx];
-  if(g.vis.has(uid))return;
-  g.vis.add(uid); g.fl=20;
+// ─── Gate logic ───────────────────────────────────────────────────────────────
+// CORRECT multiplier: each mob through ×N gate spawns (N-1) extra copies.
+// ADD gates fire once per level (group bonus).
+function onGate(g, idx, mx, my) {
+  const id = MID[idx];
+  if (g.vis.has(id)) return;
+  g.vis.add(id); g.fl=18;
 
-  if(g.type==='add'){
-    if(g.val<0){
-      // penalty: kill |val| green mobs
-      let k=Math.min(-g.val, nG+hand);
-      // kill from screen first
-      for(let i=0;i<POOL&&k>0;i++){const b=i*SZ;if(M[b+4]&&M[b+5]===0){kill(i);k--;}}
-      hand=Math.max(0, hand-k); // kill rest from hand
+  if (g.type==='add') {
+    if (g.once) return; g.once=true;
+    if (g.val<0) {
+      let k=Math.min(-g.val, nG);
+      for (let i=0; i<POOL&&k>0; i++) {const b=i*ST;if(M[b+4]&&M[b+5]===0){die(i);k--;}}
     } else {
-      hand+=g.val; pend+=g.val;
-      for(let k=0;k<g.val;k++)
-        queued.push({d:k*3, x:mx+(Math.random()-.5)*24, y:my+(Math.random()-.5)*6,
-          vx:(Math.random()-.5)*1.6, vy:-(GSPD*(.8+Math.random()*.5)), t:0});
+      pend += g.val;
+      for (let k=0; k<g.val; k++)
+        queue.push({d:k*3, x:mx+(Math.random()-.5)*22, y:my+(Math.random()-.5)*6,
+          vx:(Math.random()-.5)*1.4, vy:-(G_SPD*(.85+Math.random()*.3)), t:0});
     }
   } else {
-    if(g.val<1){
-      const kn=Math.floor(nG*(1-g.val));
-      let k=kn;
-      for(let i=0;i<POOL&&k>0;i++){const b=i*SZ;if(M[b+4]&&M[b+5]===0){kill(i);k--;}}
+    if (g.val<1) {
+      if (g.once) return; g.once=true;
+      const k=Math.floor(nG*(1-g.val));
+      let rem=k;
+      for (let i=0; i<POOL&&rem>0; i++) {const b=i*ST;if(M[b+4]&&M[b+5]===0){die(i);rem--;}}
     } else {
-      // Cap extras: max 20 new mobs per gate trigger (prevents explosion/lag)
-      const extras=Math.min(Math.floor(nG*(g.val-1)),20);
-      hand+=extras; pend+=extras;
-      for(let k=0;k<extras;k++)
-        queued.push({d:k*4, x:mx+(Math.random()-.5)*28, y:my+(Math.random()-.5)*8,
-          vx:(Math.random()-.5)*1.5, vy:-(GSPD*(.8+Math.random()*.4)), t:0});
+      // Per-mob: spawn (val-1) copies
+      const copies = Math.floor(g.val-1); // ×2→1, ×3→2, ×5→4
+      pend += copies;
+      for (let k=0; k<copies; k++)
+        queue.push({d:k*4, x:mx+(Math.random()-.5)*26, y:my+(Math.random()-.5)*8,
+          vx:(Math.random()-.5)*1.6, vy:-(G_SPD*(.8+Math.random()*.4)), t:0});
     }
   }
 }
 
-// ── Enemy fire ────────────────────────────────────────────────────────────────
-function enemyFire(){
-  const n=2+Math.min(level,7);
-  for(const t of tanks){
-    if(t.hp<=0)continue;
-    for(let k=0;k<n;k++)
-      alloc(t.x+(Math.random()-.5)*t.w*.85, t.y+t.h/2+5,
-            (Math.random()-.5)*1.3, RSPD*(.9+Math.random()*.3), 1);
+// ─── Enemy fire ───────────────────────────────────────────────────────────────
+function enemyFire() {
+  const n=2+Math.min(level,6);
+  for (const t of tanks) {
+    if (t.hp<=0) continue;
+    for (let k=0; k<n; k++)
+      spawn(t.x+(Math.random()-.5)*t.w*.8, t.y+t.h/2+4,
+            (Math.random()-.5)*1.2, R_SPD*(.9+Math.random()*.25), 1);
   }
 }
 
-// ── Update ────────────────────────────────────────────────────────────────────
-function update(){
-  if(gst!=='play'){if(--gstCD<=0){if(gst==='win'){level++;initLevel();}else{level=1;initLevel();}}return;}
+// ─── Update ───────────────────────────────────────────────────────────────────
+function update() {
+  if (gst!=='play') {
+    if (--gstT<=0) { if(gst==='win'){level++;initLevel();}else{level=1;initLevel();} }
+    return;
+  }
 
-  // Aim angle from pointer
-  // norm: -1 = full left, 0 = center (up), +1 = full right
-  const norm=Math.max(-1,Math.min(1,(ptrX-W/2)/(W*0.44)));
-  const target=-Math.PI/2+norm*Math.PI*0.33;
-  aimAngle+=(target-aimAngle)*0.18;
+  // Barrel angle follows pointer
+  const norm = Math.max(-1, Math.min(1, (ptrX-W/2)/(W*0.42)));
+  angle += ((-Math.PI/2 + norm*Math.PI*0.34) - angle) * 0.18;
 
-  // Fire
-  if(holding&&hand>0){
-    if(--fireT<=0){
+  // Fire cannon
+  if (holding && hand>0) {
+    if (--fireT<=0) {
       hand--;
-      const bx=W/2+Math.cos(aimAngle)*30, by=cannonY()+Math.sin(aimAngle)*30;
-      alloc(bx,by,Math.cos(aimAngle)*GSPD*1.35,Math.sin(aimAngle)*GSPD*1.35,0);
-      fireT=FIRE_INT;
+      spawn(W/2+Math.cos(angle)*28, CY()+Math.sin(angle)*28,
+            Math.cos(angle)*G_SPD*1.3, Math.sin(angle)*G_SPD*1.3, 0);
+      fireT=FIRE_I;
     }
   }
 
-  // Queued gate spawns
-  for(let i=queued.length-1;i>=0;i--){
-    const q=queued[i];
-    if(--q.d<=0){alloc(q.x,q.y,q.vx,q.vy,q.t);pend=Math.max(0,pend-1);queued.splice(i,1);}
+  // Process spawn queue (gate extras)
+  for (let i=queue.length-1; i>=0; i--) {
+    const q=queue[i];
+    if (--q.d<=0) { spawn(q.x,q.y,q.vx,q.vy,q.t); pend=Math.max(0,pend-1); queue.splice(i,1); }
   }
 
   // Move + animate
-  for(let i=0;i<POOL;i++){
-    const b=i*SZ;if(!M[b+4])continue;
-    M[b]+=M[b+2];M[b+1]+=M[b+3];
+  for (let i=0; i<POOL; i++) {
+    const b=i*ST; if(!M[b+4]) continue;
+    M[b]+=M[b+2]; M[b+1]+=M[b+3];
     if(++M[b+7]>=7){M[b+7]=0;M[b+6]=(M[b+6]+1)%4;}
     const spd=Math.hypot(M[b+2],M[b+3]);
-    const cap=M[b+5]===0?GSPD*2.4:RSPD*2.4;
+    const cap=M[b+5]===0?G_SPD*2.2:R_SPD*2.2;
     if(spd>cap){M[b+2]*=cap/spd;M[b+3]*=cap/spd;}
-    if(M[b]<-30||M[b]>W+30||M[b+1]<-90||M[b+1]>H+40)kill(i);
+    if(M[b]<-40||M[b]>W+40||M[b+1]<-80||M[b+1]>H+40) die(i);
   }
 
-  buildGrid();
+  buildHash();
 
-  // Separation (same team only)
-  for(let i=0;i<POOL;i++){
-    const b=i*SZ;if(!M[b+4])continue;
+  // Separation (same team, liquid crowd feel)
+  for (let i=0; i<POOL; i++) {
+    const b=i*ST; if(!M[b+4]) continue;
     let sx=0,sy=0;
-    for(const j of near(M[b],M[b+1])){
-      if(j===i)continue;const bj=j*SZ;
-      if(!M[bj+4]||M[bj+5]!==M[b+5])continue;
+    for (const j of query(M[b],M[b+1])) {
+      if(j===i) continue; const bj=j*ST;
+      if(!M[bj+4]||M[bj+5]!==M[b+5]) continue;
       const dx=M[b]-M[bj],dy=M[b+1]-M[bj+1],d2=dx*dx+dy*dy;
-      if(d2<(MR*2.6)*(MR*2.6)&&d2>0.01){const d=Math.sqrt(d2);sx+=dx/d;sy+=dy/d;}
+      if(d2<(MOB_R*2.5)*(MOB_R*2.5)&&d2>.01){const d=Math.sqrt(d2);sx+=dx/d;sy+=dy/d;}
     }
-    M[b+2]+=sx*.05;M[b+3]+=sy*.05;
+    M[b+2]+=sx*.05; M[b+3]+=sy*.05;
   }
 
-  // Obstacle avoidance (all mobs pushed away from rocks)
-  for(let i=0;i<POOL;i++){
-    const b=i*SZ;if(!M[b+4])continue;
-    for(const o of obstacles){
-      const cx=o.x+o.w/2, cy=o.y+o.h/2;
-      const nearX=Math.max(o.x,Math.min(o.x+o.w,M[b]));
-      const nearY=Math.max(o.y,Math.min(o.y+o.h,M[b+1]));
-      const dx=M[b]-nearX, dy=M[b+1]-nearY;
-      const d2=dx*dx+dy*dy;
-      if(d2<(MR+4)*(MR+4)&&d2>0.001){
-        const d=Math.sqrt(d2);
-        M[b+2]+=dx/d*0.5;M[b+3]+=dy/d*0.5;
-      }
+  // Rock avoidance
+  for (let i=0; i<POOL; i++) {
+    const b=i*ST; if(!M[b+4]) continue;
+    for (const r of rocks) {
+      const nx=Math.max(r.x,Math.min(r.x+r.w,M[b]));
+      const ny=Math.max(r.y,Math.min(r.y+r.h,M[b+1]));
+      const dx=M[b]-nx, dy=M[b+1]-ny, d2=dx*dx+dy*dy;
+      if(d2<(MOB_R+5)*(MOB_R+5)&&d2>.001){const d=Math.sqrt(d2);M[b+2]+=dx/d*.6;M[b+3]+=dy/d*.6;}
     }
   }
 
-  // Gate check (green, moving upward)
-  for(let i=0;i<POOL;i++){
-    const b=i*SZ;if(!M[b+4]||M[b+5]!==0||M[b+3]>=0)continue;
+  // Gate check (green mobs moving upward)
+  for (let i=0; i<POOL; i++) {
+    const b=i*ST; if(!M[b+4]||M[b+5]!==0||M[b+3]>=0) continue;
     const mx=M[b],my=M[b+1];
-    for(const g of gates){
-      if(my>g.y+g.h/2+2||my<g.y-g.h/2-2)continue;
-      if(mx<g.x1||mx>g.x2)continue;
-      applyGate(g,i,mx,my);break;
+    for (const g of gates) {
+      if(my>g.y+g.h/2+2||my<g.y-g.h/2-2) continue;
+      if(mx<g.x1||mx>g.x2) continue;
+      onGate(g,i,mx,my); break;
     }
   }
 
-  // Combat: green vs red (both die)
-  buildGrid();
-  const dead=new Set();
-  for(let i=0;i<POOL;i++){
-    const b=i*SZ;if(!M[b+4]||dead.has(i))continue;
+  // Combat: green vs red → BOTH die (pure annihilation)
+  buildHash();
+  const dead2 = new Set();
+  for (let i=0; i<POOL; i++) {
+    const b=i*ST; if(!M[b+4]||dead2.has(i)) continue;
     const ti=M[b+5];
-    for(const j of near(M[b],M[b+1])){
-      if(j===i||dead.has(j))continue;
-      const bj=j*SZ;if(!M[bj+4]||M[bj+5]===ti)continue;
+    for (const j of query(M[b],M[b+1])) {
+      if(j===i||dead2.has(j)) continue; const bj=j*ST;
+      if(!M[bj+4]||M[bj+5]===ti) continue;
       const dx=M[b]-M[bj],dy=M[b+1]-M[bj+1];
-      if(dx*dx+dy*dy<(MR*2.1)*(MR*2.1)){
+      if(dx*dx+dy*dy<(MOB_R*2.1)*(MOB_R*2.1)){
         burst((M[b]+M[bj])/2,(M[b+1]+M[bj+1])/2,ti===0?'#2ecc71':'#e74c3c',6);
-        dead.add(i);dead.add(j);break;
+        dead2.add(i);dead2.add(j);break;
       }
     }
   }
-  for(const idx of dead)kill(idx);
+  for (const i of dead2) die(i);
 
-  // Green hits tank
-  for(let i=0;i<POOL;i++){
-    const b=i*SZ;if(!M[b+4]||M[b+5]!==0)continue;
-    for(const t of tanks){
-      if(t.hp<=0)continue;
-      if(M[b]>t.x-t.w/2&&M[b]<t.x+t.w/2&&M[b+1]>t.y-t.h-6&&M[b+1]<t.y+t.h/2+8){
-        t.hp--;t.fl=12;kill(i);
+  // Green mob reaches tank → -1 HP, mob dies
+  for (let i=0; i<POOL; i++) {
+    const b=i*ST; if(!M[b+4]||M[b+5]!==0) continue;
+    for (const t of tanks) {
+      if(t.hp<=0) continue;
+      if(M[b]>t.x-t.w/2&&M[b]<t.x+t.w/2&&M[b+1]>t.y-t.h-6&&M[b+1]<t.y+t.h/2+6){
+        t.hp--; t.fl=12; die(i);
         shake(t.hp>0?4:12);
-        floater(t.x+(Math.random()-.5)*18,t.y-t.h-12,'-1','#ff6b6b');
-        if(t.hp<=0)burst(t.x,t.y,'#ff4040',14);
+        addNum(t.x+(Math.random()-.5)*18,t.y-t.h-10,'-1','#ff6b6b');
+        if(t.hp<=0) burst(t.x,t.y,'#e74c3c',14);
         break;
       }
     }
   }
 
-  // Ticks
-  for(const t of tanks)if(t.fl>0)t.fl--;
-  for(const g of gates)if(g.fl>0)g.fl--;
-  if(--enemyT<=0){enemyFire();enemyT=ENEMY_INT;}
-  tickPS();tickFL2();
-  if(shN>0)shN--;
+  for(const t of tanks) if(t.fl>0)t.fl--;
+  for(const g of gates) if(g.fl>0)g.fl--;
+  if(--enmT<=0){enemyFire();enmT=ENM_I;}
+  tickParts();tickNums();
+  if(shT>0)shT--;
 
-  if(tanks.every(t=>t.hp<=0)){gst='win';gstCD=140;}
+  if(tanks.every(t=>t.hp<=0)){gst='win';gstT=140;}
+  for(let i=0;i<POOL;i++){const b=i*ST;if(!M[b+4]||M[b+5]!==1)continue;if(M[b+1]>CY()+20){gst='lose';gstT=130;return;}}
+}
 
-  // Lose: any red mob crosses cannon line
-  const cy=cannonY();
-  for(let i=0;i<POOL;i++){
-    const b=i*SZ;if(!M[b+4]||M[b+5]!==1)continue;
-    if(M[b+1]>cy+18){gst='lose';gstCD=140;return;}
+// ─── Draw ─────────────────────────────────────────────────────────────────────
+function drawBG() {
+  // Sky
+  cx.fillStyle='#1a1a2e'; cx.fillRect(0,0,W,H);
+  const ll=LL(),lr=LR();
+  // Grass sides
+  cx.fillStyle='#2a4a1a'; cx.fillRect(0,0,ll,H);
+  cx.fillRect(lr,0,W-lr,H);
+  // Road gradient
+  const rg=cx.createLinearGradient(ll,0,lr,0);
+  rg.addColorStop(0,'#b89c72'); rg.addColorStop(0.5,'#c8ac82'); rg.addColorStop(1,'#b89c72');
+  cx.fillStyle=rg; cx.fillRect(ll,0,lr-ll,H);
+  // Yellow edge stripes
+  cx.fillStyle='#e8c048';cx.fillRect(ll,0,5,H);cx.fillRect(lr-5,0,5,H);
+  // Center dash
+  cx.save();cx.setLineDash([16,22]);cx.strokeStyle='rgba(255,255,255,.20)';cx.lineWidth=3;
+  cx.beginPath();cx.moveTo(W/2,0);cx.lineTo(W/2,H);cx.stroke();cx.setLineDash([]);cx.restore();
+}
+
+function drawRocks() {
+  for (const r of rocks) {
+    // shadow
+    cx.fillStyle='rgba(0,0,0,.28)';cx.beginPath();cx.roundRect(r.x+4,r.y+5,r.w,r.h,7);cx.fill();
+    // base
+    cx.fillStyle='#7a6a55';cx.beginPath();cx.roundRect(r.x,r.y,r.w,r.h,7);cx.fill();
+    // top lighter stripe
+    cx.fillStyle='#9a8a70';cx.beginPath();cx.roundRect(r.x,r.y,r.w,r.h*.4,7);cx.fill();
+    // bottom dark stripe
+    cx.fillStyle='#5a4a38';cx.beginPath();cx.roundRect(r.x,r.y+r.h*.6,r.w,r.h*.4,7);cx.fill();
+    // outline
+    cx.strokeStyle='#a89070';cx.lineWidth=1.5;cx.beginPath();cx.roundRect(r.x,r.y,r.w,r.h,7);cx.stroke();
   }
 }
 
-// ── Draw ──────────────────────────────────────────────────────────────────────
-function drawRoad(){
-  const lt=laneTopY(), lb=laneBotY(), ll=LANE_L(), lr=LANE_R();
-  // Side zones (grass/city)
-  X.fillStyle='#1a472a'; X.fillRect(0,0,ll,H);
-  X.fillStyle='#1a472a'; X.fillRect(lr,0,W-lr,H);
-  // Road
-  const g=X.createLinearGradient(W/2,lt,W/2,lb);
-  g.addColorStop(0,'#8a7560');g.addColorStop(1,'#9e8a72');
-  X.fillStyle=g; X.fillRect(ll,0,lr-ll,H);
-  // Road border stripes
-  X.fillStyle='#c8a96a'; X.fillRect(ll,0,6,H); X.fillRect(lr-6,0,6,H);
-  // Center dashes
-  X.save();X.setLineDash([18,22]);X.strokeStyle='rgba(255,255,255,0.18)';X.lineWidth=3;
-  X.beginPath();X.moveTo(W/2,lt-20);X.lineTo(W/2,lb+20);X.stroke();
-  X.setLineDash([]);X.restore();
-  // Obstacles (rocks/cubes)
-  for(const o of obstacles){
-    const ox=o.x,oy=o.y,ow=o.w,oh=o.h,rx=o.rx||6;
-    // Shadow
-    X.fillStyle='rgba(0,0,0,0.25)';X.beginPath();X.roundRect(ox+4,oy+5,ow,oh,rx);X.fill();
-    // Top face (lighter)
-    X.fillStyle='#8a7a65';X.beginPath();X.roundRect(ox,oy,ow,oh,rx);X.fill();
-    // Fake 3D top edge
-    X.fillStyle='#a0906d';X.beginPath();X.roundRect(ox,oy,ow,oh*0.4,rx);X.fill();
-    // Dark side
-    X.fillStyle='#6a5c4a';X.beginPath();X.roundRect(ox,oy+oh*0.6,ow,oh*0.4,rx);X.fill();
-    // Highlight
-    X.strokeStyle='#bfad90';X.lineWidth=1.5;X.beginPath();X.roundRect(ox,oy,ow,oh,rx);X.stroke();
+function drawGates() {
+  cx.textBaseline='middle';
+  for (const g of gates) {
+    cx.save();
+    if(g.fl>0){cx.shadowColor='#fff';cx.shadowBlur=22;}
+    const gw=g.x2-g.x1;
+    const gg=cx.createLinearGradient(g.x1,0,g.x2,0);
+    gg.addColorStop(0,g.color+'aa');gg.addColorStop(.5,g.color);gg.addColorStop(1,g.color+'aa');
+    cx.fillStyle=gg;cx.beginPath();cx.roundRect(g.x1,g.y-g.h/2,gw,g.h,8);cx.fill();
+    cx.fillStyle='#fff';cx.font='bold 16px Arial';cx.textAlign='center';
+    cx.fillText(g.label,g.x1+gw/2,g.y);
+    cx.restore();
   }
+  cx.textBaseline='alphabetic';
 }
 
-function drawGates(){
-  X.textBaseline='middle';
-  for(const g of gates){
-    X.save();
-    if(g.fl>0){X.shadowColor='#fff';X.shadowBlur=18;}
-    const w=g.x2-g.x1;
-    X.beginPath();X.roundRect(g.x1,g.y-g.h/2,w,g.h,7);
-    const gr=X.createLinearGradient(g.x1,0,g.x2,0);
-    gr.addColorStop(0,g.color+'99');gr.addColorStop(0.5,g.color);gr.addColorStop(1,g.color+'99');
-    X.fillStyle=gr;X.fill();
-    X.fillStyle='#fff';X.font='bold 14px Arial';X.textAlign='center';
-    X.fillText(g.label,g.x1+w/2,g.y);
-    X.restore();
-  }
-  X.textBaseline='alphabetic';
+function drawMobChar(x, y, fr, team) {
+  const r=MOB_R,bc=team===0?'#2ecc71':'#e74c3c',sc=team===0?'#f0c070':'#f5c0a0';
+  const lg=[0,3.5,0,-3.5][fr%4];
+  cx.fillStyle=bc;
+  cx.beginPath();cx.ellipse(x-2.5,y+r+2+lg,2,4.5,.15,0,Math.PI*2);cx.fill();
+  cx.beginPath();cx.ellipse(x+2.5,y+r+2-lg,2,4.5,-.15,0,Math.PI*2);cx.fill();
+  cx.beginPath();cx.arc(x,y,r,0,Math.PI*2);cx.fill();
+  cx.fillStyle=sc;cx.beginPath();cx.arc(x,y-r*.88,r*.55,0,Math.PI*2);cx.fill();
+  cx.fillStyle='#333';
+  cx.beginPath();cx.arc(x-1.7,y-r*.93,1.1,0,Math.PI*2);cx.fill();
+  cx.beginPath();cx.arc(x+1.7,y-r*.93,1.1,0,Math.PI*2);cx.fill();
 }
 
-function drawMob(x,y,frame,team){
-  const r=MR, bc=team===0?'#2ecc71':'#e74c3c', hc=team===0?'#f0c070':'#f5c0a0';
-  const lo=[0,3.5,0,-3.5][frame%4];
-  X.fillStyle=bc;
-  X.beginPath();X.ellipse(x-2.5,y+r+2+lo,2,4.5,0.15,0,Math.PI*2);X.fill();
-  X.beginPath();X.ellipse(x+2.5,y+r+2-lo,2,4.5,-0.15,0,Math.PI*2);X.fill();
-  X.beginPath();X.arc(x,y,r,0,Math.PI*2);X.fill();
-  X.fillStyle=hc;X.beginPath();X.arc(x,y-r*.88,r*.55,0,Math.PI*2);X.fill();
-  X.fillStyle='#333';
-  X.beginPath();X.arc(x-1.7,y-r*.93,1.1,0,Math.PI*2);X.fill();
-  X.beginPath();X.arc(x+1.7,y-r*.93,1.1,0,Math.PI*2);X.fill();
+function drawMobs() {
+  for(let i=0;i<POOL;i++){const b=i*ST;if(!M[b+4])continue;drawMobChar(M[b],M[b+1],M[b+6],M[b+5]);}
 }
 
-function drawMobs(){
-  for(let i=0;i<POOL;i++){const b=i*SZ;if(!M[b+4])continue;drawMob(M[b],M[b+1],M[b+6],M[b+5]);}
-}
-
-function drawTanks(){
-  for(const t of tanks){
-    if(t.hp<=0)continue;
-    X.save();if(t.fl>0)X.filter='brightness(2.5)';
-    // treads
-    X.fillStyle='#555';X.beginPath();X.roundRect(t.x-t.w/2-4,t.y-7,t.w+8,13,4);X.fill();
-    // hull
-    X.fillStyle=t.fl>0?'#ff3030':'#c0392b';X.fillRect(t.x-t.w/2,t.y-t.h,t.w,t.h);
-    // turret
-    X.fillStyle=t.fl>0?'#ff5050':'#e74c3c';
-    X.beginPath();X.ellipse(t.x,t.y-t.h-3,t.w*.30,9,0,0,Math.PI*2);X.fill();
-    // barrel pointing down
-    X.fillStyle='#888';X.beginPath();X.roundRect(t.x-4,t.y-t.h-1,8,t.h*.58,2);X.fill();
-    X.fillStyle='#fff';X.font='bold 10px Arial';X.textAlign='center';X.fillText('★',t.x,t.y-t.h/2+5);
-    X.restore();
-    // HP bar
-    const bw=t.w+18,bh=8,bx=t.x-bw/2,by=t.y-t.h-22;
-    X.fillStyle='#333';X.fillRect(bx,by,bw,bh);
+function drawTanks() {
+  for (const t of tanks) {
+    if(t.hp<=0) continue;
+    cx.save();if(t.fl>0)cx.filter='brightness(2.5)';
+    cx.fillStyle='#555';cx.beginPath();cx.roundRect(t.x-t.w/2-5,t.y-8,t.w+10,14,5);cx.fill();
+    cx.fillStyle=t.fl>0?'#ff3030':'#c0392b';cx.fillRect(t.x-t.w/2,t.y-t.h,t.w,t.h);
+    cx.fillStyle=t.fl>0?'#ff5555':'#e74c3c';
+    cx.beginPath();cx.ellipse(t.x,t.y-t.h-3,t.w*.30,9,0,0,Math.PI*2);cx.fill();
+    cx.fillStyle='#888';cx.beginPath();cx.roundRect(t.x-4,t.y-t.h-1,8,t.h*.55,2);cx.fill();
+    cx.fillStyle='#fff';cx.font='bold 11px Arial';cx.textAlign='center';cx.fillText('★',t.x,t.y-t.h/2+5);
+    cx.restore();
+    const bw=t.w+20,bh=8,bx=t.x-bw/2,by=t.y-t.h-24;
+    cx.fillStyle='#222';cx.fillRect(bx,by,bw,bh);
     const pct=t.hp/t.max;
-    X.fillStyle=pct>.6?'#2ecc71':pct>.3?'#f39c12':'#e74c3c';X.fillRect(bx,by,bw*pct,bh);
-    X.strokeStyle='#aaa';X.lineWidth=1;X.strokeRect(bx,by,bw,bh);
-    X.fillStyle='#fff';X.font='bold 9px Arial';X.textAlign='center';X.fillText(`${t.hp}/${t.max}`,t.x,by-1);
+    cx.fillStyle=pct>.6?'#2ecc71':pct>.3?'#f39c12':'#e74c3c';cx.fillRect(bx,by,bw*pct,bh);
+    cx.strokeStyle='#ccc';cx.lineWidth=1;cx.strokeRect(bx,by,bw,bh);
+    cx.fillStyle='#fff';cx.font='bold 9px Arial';cx.textAlign='center';cx.fillText(`${t.hp}/${t.max}`,t.x,by-1);
   }
 }
 
-function drawCannon(){
-  const cy=cannonY();
-  X.save();X.translate(W/2,cy);
+function drawCannon() {
+  cx.save(); cx.translate(W/2, CY());
   [-18,18].forEach(ox=>{
-    X.fillStyle='#444';X.beginPath();X.arc(ox,14,10,0,Math.PI*2);X.fill();
-    X.fillStyle='#777';X.beginPath();X.arc(ox,14,5,0,Math.PI*2);X.fill();
+    cx.fillStyle='#444';cx.beginPath();cx.arc(ox,14,10,0,Math.PI*2);cx.fill();
+    cx.fillStyle='#777';cx.beginPath();cx.arc(ox,14,5,0,Math.PI*2);cx.fill();
   });
-  X.fillStyle='#2980b9';X.beginPath();X.roundRect(-26,0,52,18,4);X.fill();
-  X.save();
-  X.rotate(aimAngle+Math.PI/2);
-  X.fillStyle='#1a6fa8';X.beginPath();X.roundRect(-6,-36,12,38,4);X.fill();
-  X.fillStyle='#1565c0';X.beginPath();X.roundRect(-7,-38,14,9,3);X.fill();
-  X.restore();
-  X.fillStyle='#3498db';X.beginPath();X.arc(0,0,14,0,Math.PI*2);X.fill();
-  X.restore();
+  cx.fillStyle='#2980b9';cx.beginPath();cx.roundRect(-26,0,52,18,4);cx.fill();
+  cx.save();
+  cx.rotate(angle+Math.PI/2);
+  cx.fillStyle='#1a6fa8';cx.beginPath();cx.roundRect(-6,-36,12,38,4);cx.fill();
+  cx.fillStyle='#1565c0';cx.beginPath();cx.roundRect(-7,-38,14,9,3);cx.fill();
+  cx.restore();
+  cx.fillStyle='#3498db';cx.beginPath();cx.arc(0,0,14,0,Math.PI*2);cx.fill();
+  cx.restore();
 }
 
-function drawHUD(){
-  const total=hand+nG+pend;
-  X.font='bold 52px Arial';X.textAlign='center';
-  X.strokeStyle='#000';X.lineWidth=5;X.strokeText(total,W/2,cannonY()-36);
-  X.fillStyle='#fff';X.fillText(total,W/2,cannonY()-36);
-  X.font='bold 17px Arial';X.textAlign='left';
-  X.strokeStyle='#000';X.lineWidth=3;X.strokeText('Level '+level,12,26);
-  X.fillStyle='#fff';X.fillText('Level '+level,12,26);
+function drawHUD() {
+  const total = hand + nG + pend;
+  cx.font='bold 52px Arial';cx.textAlign='center';
+  cx.strokeStyle='#000';cx.lineWidth=5;cx.strokeText(total,W/2,CY()-36);
+  cx.fillStyle='#fff';cx.fillText(total,W/2,CY()-36);
+  cx.font='bold 18px Arial';cx.textAlign='left';
+  cx.strokeStyle='#000';cx.lineWidth=3;cx.strokeText('Level '+level,12,28);
+  cx.fillStyle='#fff';cx.fillText('Level '+level,12,28);
   if(holding){
-    X.save();X.setLineDash([5,9]);X.strokeStyle='rgba(255,255,255,.32)';X.lineWidth=1.5;
-    const bx=W/2+Math.cos(aimAngle)*18,by=cannonY()+Math.sin(aimAngle)*18;
-    X.beginPath();X.moveTo(bx,by);X.lineTo(bx+Math.cos(aimAngle)*190,by+Math.sin(aimAngle)*190);
-    X.stroke();X.setLineDash([]);X.restore();
+    cx.save();cx.setLineDash([5,9]);cx.strokeStyle='rgba(255,255,255,.3)';cx.lineWidth=1.5;
+    const bx=W/2+Math.cos(angle)*18,by=CY()+Math.sin(angle)*18;
+    cx.beginPath();cx.moveTo(bx,by);cx.lineTo(bx+Math.cos(angle)*190,by+Math.sin(angle)*190);
+    cx.stroke();cx.setLineDash([]);cx.restore();
   }
 }
 
-function drawOverlay(){
+function drawOverlay() {
   if(gst==='win'){
-    X.fillStyle='rgba(0,0,0,.5)';X.fillRect(0,0,W,H);
-    X.font='bold 56px Arial';X.textAlign='center';
-    X.strokeStyle='#000';X.lineWidth=6;X.strokeText('VICTORY!',W/2,H/2-10);
-    X.fillStyle='#f1c40f';X.fillText('VICTORY!',W/2,H/2-10);
-    X.font='bold 22px Arial';X.fillStyle='#fff';X.fillText('Level '+level+' clear!',W/2,H/2+28);
+    cx.fillStyle='rgba(0,0,0,.5)';cx.fillRect(0,0,W,H);
+    cx.font='bold 56px Arial';cx.textAlign='center';
+    cx.strokeStyle='#000';cx.lineWidth=7;cx.strokeText('VICTORY!',W/2,H/2-10);
+    cx.fillStyle='#f1c40f';cx.fillText('VICTORY!',W/2,H/2-10);
+    cx.font='bold 22px Arial';cx.fillStyle='#fff';cx.fillText('Level '+level+' clear!',W/2,H/2+28);
   } else if(gst==='lose'){
-    X.fillStyle='rgba(0,0,0,.6)';X.fillRect(0,0,W,H);
-    X.font='bold 56px Arial';X.textAlign='center';
-    X.strokeStyle='#000';X.lineWidth=6;X.strokeText('DEFEAT!',W/2,H/2-10);
-    X.fillStyle='#e74c3c';X.fillText('DEFEAT!',W/2,H/2-10);
-    X.font='bold 20px Arial';X.fillStyle='#fff';X.fillText('Restarting...',W/2,H/2+28);
+    cx.fillStyle='rgba(0,0,0,.6)';cx.fillRect(0,0,W,H);
+    cx.font='bold 56px Arial';cx.textAlign='center';
+    cx.strokeStyle='#000';cx.lineWidth=7;cx.strokeText('DEFEAT!',W/2,H/2-10);
+    cx.fillStyle='#e74c3c';cx.fillText('DEFEAT!',W/2,H/2-10);
+    cx.font='bold 20px Arial';cx.fillStyle='#fff';cx.fillText('Restarting...',W/2,H/2+28);
   }
 }
 
-function draw(){
-  X.save();
-  if(shN>0){const s=shM*(shN/14);X.translate((Math.random()-.5)*s,(Math.random()-.5)*s);}
-  X.fillStyle='#0f2027';X.fillRect(0,0,W,H);
-  drawRoad();drawGates();drawMobs();drawTanks();drawCannon();drawPS();drawFL2();drawHUD();drawOverlay();
-  X.restore();
+function render() {
+  cx.save();
+  if(shT>0){const s=shA*(shT/14);cx.translate((Math.random()-.5)*s,(Math.random()-.5)*s);}
+  drawBG();drawRocks();drawGates();drawMobs();drawTanks();drawCannon();drawParts();drawNums();drawHUD();drawOverlay();
+  cx.restore();
 }
 
-// ── Input ─────────────────────────────────────────────────────────────────────
-function gx(e){return(e.touches?e.touches[0].clientX:e.clientX)-C.getBoundingClientRect().left;}
-C.addEventListener('mousedown', e=>{holding=true;ptrX=gx(e);fireT=0;});
-C.addEventListener('mousemove', e=>{ptrX=gx(e);});
-C.addEventListener('mouseup',   ()=>{holding=false;});
-C.addEventListener('mouseleave',()=>{holding=false;});
-C.addEventListener('touchstart',e=>{e.preventDefault();holding=true;ptrX=gx(e);fireT=0;},{passive:false});
-C.addEventListener('touchmove', e=>{e.preventDefault();ptrX=gx(e);},{passive:false});
-C.addEventListener('touchend',  e=>{e.preventDefault();holding=false;},{passive:false});
+// ─── Input ────────────────────────────────────────────────────────────────────
+function gx(e){return(e.touches?e.touches[0].clientX:e.clientX)-cv.getBoundingClientRect().left;}
+cv.addEventListener('mousedown',  e=>{holding=true; ptrX=gx(e);fireT=0;});
+cv.addEventListener('mousemove',  e=>{ptrX=gx(e);});
+cv.addEventListener('mouseup',    ()=>{holding=false;});
+cv.addEventListener('mouseleave', ()=>{holding=false;});
+cv.addEventListener('touchstart', e=>{e.preventDefault();holding=true; ptrX=gx(e);fireT=0;},{passive:false});
+cv.addEventListener('touchmove',  e=>{e.preventDefault();ptrX=gx(e);},{passive:false});
+cv.addEventListener('touchend',   e=>{e.preventDefault();holding=false;},{passive:false});
 
-// ── Loop ──────────────────────────────────────────────────────────────────────
+// ─── Loop ─────────────────────────────────────────────────────────────────────
 initLevel();
-(function loop(){requestAnimationFrame(loop);update();draw();})();
+(function loop(){requestAnimationFrame(loop);update();render();})();
 </script>
 </body>
 </html>
